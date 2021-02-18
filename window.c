@@ -14,12 +14,14 @@
 #define XK_LATIN1
 #include "keysymdef.h"
 
+#include <X11/keysym.h>
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <inttypes.h>
 #include <locale.h>
+#include <math.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -36,7 +38,6 @@
 #include <unistd.h>
 #include <xcb/shm.h>
 #include <xcb/xcb.h>
-#include <X11/keysym.h>
 
 #define TRUE_COLOR_ALPHA_DEPTH 32
 #define BG_COLOR 0xFF000000
@@ -84,6 +85,8 @@ struct context {
         xcb_atom_t WM_PROTOCOLS;
         xcb_atom_t UTF8_STRING;
     } atom;
+
+    int16_t center_x, center_y;
 
     xcb_get_keyboard_mapping_reply_t *keymap;
 };
@@ -208,7 +211,12 @@ static void renderer_update(struct rect rect) {
 
 static void redraw(struct rect damage) {
     image_draw_rect(ctx.im, damage, BG_COLOR);
-    image_draw_rect(ctx.im, (struct rect){ctx.im.width/2-40, ctx.im.height/2-40, 80, 80}, 0xFFFFFFFF);
+    uint32_t v = fabs(sin(ctx.last_draw.tv_sec/1000.+ctx.last_draw.tv_nsec/100000000000.))*0xFFFFFF;
+
+    int16_t x = ctx.im.width/2 + ctx.center_x;
+    int16_t y = ctx.im.height/2 + ctx.center_y;
+    image_draw_rect(ctx.im, (struct rect){x-40, y-40, 80, 80}, 0xFF000000 | v);
+
     renderer_update(damage);
 }
 
@@ -422,7 +430,16 @@ static xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
 }
 
 static void handle_keydown(xcb_keycode_t kc, uint16_t state) {
-    warn("Key pressed: %x", get_keysym(kc, state));
+#define DELTA_COORD 10
+
+    xcb_keysym_t ksym = get_keysym(kc, state);
+    switch (ksym) {
+    case XK_w: ctx.center_y -= DELTA_COORD; break;
+    case XK_s: ctx.center_y += DELTA_COORD; break;
+    case XK_a: ctx.center_x -= DELTA_COORD; break;
+    case XK_d: ctx.center_x += DELTA_COORD; break;
+    }
+
 }
 
 static void run(void) {
