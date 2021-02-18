@@ -5,6 +5,15 @@
 #include "util.h"
 #include "image.h"
 
+
+/* This is a copy of key sym definitions
+ * file from Xlib is shipped with the
+ * program in order to prevent X11 from being
+ * a dependency (only libxcb and libxcb-shm are required) */
+#define XK_MISCELLANY
+#define XK_LATIN1
+#include "keysymdef.h"
+
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
@@ -27,6 +36,7 @@
 #include <unistd.h>
 #include <xcb/shm.h>
 #include <xcb/xcb.h>
+#include <X11/keysym.h>
 
 #define TRUE_COLOR_ALPHA_DEPTH 32
 #define BG_COLOR 0xFF000000
@@ -77,6 +87,8 @@ struct context {
         xcb_atom_t WM_PROTOCOLS;
         xcb_atom_t UTF8_STRING;
     } atom;
+
+    xcb_get_keyboard_mapping_reply_t *keymap;
 };
 
 struct context ctx;
@@ -198,8 +210,6 @@ static void renderer_update(struct rect rect) {
 }
 
 static void redraw(struct rect damage) {
-    static int64_t frame;
-    warn("Draw %"PRId64, frame++);
     image_draw_rect(ctx.im, damage, BG_COLOR);
     renderer_update(damage);
 }
@@ -269,6 +279,18 @@ static void create_window(void) {
 
     xcb_map_window(ctx.con, ctx.wid);
     xcb_flush(ctx.con);
+}
+
+static void configure_keyboard(void) {
+    const struct xcb_setup_t *setup = xcb_get_setup(ctx.con);
+
+    xcb_get_keyboard_mapping_cookie_t res = xcb_get_keyboard_mapping(ctx.con, setup->min_keycode, setup->max_keycode - setup->min_keycode + 1);
+    xcb_generic_error_t *err = NULL;
+    ctx.keymap = xcb_get_keyboard_mapping_reply(ctx.con, res, &err);
+    if (err) {
+        free(err);
+        die("Can't get keyboard mapping: major=%d minor=%d error=%d", err->major_code, err->minor_code, err->error_code);
+    }
 }
 
 
@@ -351,6 +373,7 @@ static void init_context(void) {
         if (it.data) dpi = MAX(dpi, (it.data->width_in_pixels * 25.4)/it.data->width_in_millimeters);
     if (dpi > 0) ctx.dpi = dpi;
 
+    configure_keyboard();
     create_window();
 }
 
@@ -369,13 +392,46 @@ static void free_context(void) {
         xcb_destroy_window(ctx.con, ctx.wid);
     }
 
+    free(ctx.keymap);
+
     xcb_disconnect(ctx.con);
+}
+
+enum modifier_mask {
+    mask_shift = 1 << 0,
+    mask_lock = 1 << 1,
+    mask_control = 1 << 2,
+    mask_mod_1 = 1 << 3, /* Alt */
+    mask_mod_2 = 1 << 4, /* Numlock */
+    mask_mod_3 = 1 << 5,
+    mask_mod_4 = 1 << 6, /* Super */
+    mask_mod_5 = 1 << 7, /* Group */
+};
+
+static xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
+    // Since we are not using XKB (xkbcommon) and only
+    // core keyboard, we need to translate keycodes to keysyms
+    // manually (although we might just want to the first one for consistency)
+
+    size_t nksym = xcb_get_keyboard_mapping_keysyms_length(ctx.keymap);
+    xcb_keysym_t *ksyms = xcb_get_keyboard_mapping_keysyms(ctx.keymap);
+    size_t ksym_per_kc = ctx.keymap->keysyms_per_keycode;
+
+    xcb_keysym_t *entry = &ksyms[ksym_per_kc * kc];
+    bool group = ksym_per_kc >= 3 && state & mask_mod_5 && entry[2];
+    bool shift = ksym_per_kc >= 2 && state & mask_shift && entry[1];
+
+    return entry[2*group + shift];
+}
+
+static void handle_keydown(xcb_keycode_t kc, uint16_t state) {
+    warn("Key pressed: %x", get_keysym(kc, state));
 }
 
 static void run(void) {
     struct pollfd pfd = {
-    	.fd = xcb_get_file_descriptor(ctx.con),
-    	.events = POLLIN | POLLHUP,
+        .fd = xcb_get_file_descriptor(ctx.con),
+        .events = POLLIN | POLLHUP,
     };
 
     for (int64_t next_timeout = SEC;;) {
@@ -413,9 +469,7 @@ static void run(void) {
                 }
                 case XCB_KEY_PRESS:{
                     xcb_key_release_event_t *ev = (xcb_key_release_event_t*)event;
-                    // TODO
-                    (void)ev;
-                    //handle_keydown(ev->detail);
+                    handle_keydown(ev->detail, ev->state);
                     break;
                 }
                 case XCB_FOCUS_IN:
