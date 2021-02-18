@@ -16,6 +16,7 @@ struct image {
 
 void image_draw_rect(struct image im, struct rect rect, color_t fg);
 void image_copy(struct image im, struct rect rect, struct image src, int16_t sx, int16_t sy);
+void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect);
 
 #endif
 

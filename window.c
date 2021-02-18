@@ -39,6 +39,9 @@
 #include <xcb/shm.h>
 #include <xcb/xcb.h>
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #define TRUE_COLOR_ALPHA_DEPTH 32
 #define BG_COLOR 0xFF000000
 #define WINDOW_X 100
@@ -89,6 +92,8 @@ struct context {
     int16_t center_x, center_y;
 
     xcb_get_keyboard_mapping_reply_t *keymap;
+
+    struct image image;
 };
 
 struct context ctx;
@@ -121,6 +126,38 @@ inline static bool check_void_cookie(xcb_void_cookie_t ck) {
     }
     free(err);
     return 0;
+}
+
+inline static uint8_t color_r(color_t c) { return (c >> 16) & 0xFF; }
+inline static uint8_t color_g(color_t c) { return (c >> 8) & 0xFF; }
+inline static uint8_t color_b(color_t c) { return c & 0xFF; }
+inline static uint8_t color_a(color_t c) { return c >> 24; }
+inline static color_t mk_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
+    return ((color_t)a << 24U) | (r << 16U) | (g << 8U) | b;
+}
+
+static struct image create_image(const char *file) {
+    int x, y, n;
+    color_t *image = (void *)stbi_load(file, &x, &y, &n, sizeof(color_t));
+    if (!image) {
+        die("Can't load image: %s", stbi_failure_reason());
+    }
+
+    // We need to swap channels since we expect BGR
+    // And also X11 uses premultiplied alpha channel
+    // (And this is a one-time conversion, so speed does not matter)
+    for (size_t yi = 0; yi < (size_t)y; yi++) {
+        for (size_t xi = 0; xi < (size_t)x; xi++) {
+            color_t *col = &image[xi+yi*x];
+            uint8_t a = color_a(*col);
+            uint8_t r = color_r(*col);
+            uint8_t g = color_g(*col);
+            uint8_t b = color_b(*col);
+            *col = mk_color(b*a/255., g*a/255., r*a/255., a);
+        }
+    }
+            
+    return (struct image) { .width = x, .height = y, .shmid = -1, .data = image };
 }
 
 static struct image create_shm_image(int16_t width, int16_t height) {
@@ -215,7 +252,8 @@ static void redraw(struct rect damage) {
 
     int16_t x = ctx.im.width/2 + ctx.center_x;
     int16_t y = ctx.im.height/2 + ctx.center_y;
-    image_draw_rect(ctx.im, (struct rect){x-40, y-40, 80, 80}, 0xFF000000 | v);
+    image_blt(ctx.im, (struct rect){x, y, 80, 80}, ctx.image, (struct rect){0, 0, ctx.image.width, ctx.image.height});
+    //image_draw_rect(ctx.im, (struct rect){x-40, y-40, 80, 80}, 0xFF000000 | v);
 
     renderer_update(damage);
 }
@@ -553,6 +591,10 @@ int main(int argc, char **argv) {
     setlocale(LC_CTYPE, "");
 
     init_context();
+
+
+	ctx.image = create_image("test.png");
+    
     run();
 
     return EXIT_SUCCESS;

@@ -71,3 +71,15 @@ void image_copy(struct image im, struct rect rect, struct image src, int16_t sx,
         }
     }
 }
+
+void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect) {
+    double xscale = srect.width/(double)drect.width, yscale = srect.height/(double)drect.height;
+    if (intersect_with(&drect, &(struct rect){0, 0, dst.width, dst.height})) {
+        for (size_t j = 0; j < (size_t)drect.height; j++) {
+            for (size_t i = 0; i < (size_t)drect.width; i++) {
+                dst.data[(drect.y + j) * dst.width + (drect.x + i)] =
+                        src.data[src.width * (size_t)(srect.y + j*yscale) + (size_t)(srect.x + i*xscale)];
+            }
+        }
+    }
+}
