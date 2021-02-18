@@ -160,6 +160,11 @@ static struct image create_image(const char *file) {
     return (struct image) { .width = x, .height = y, .shmid = -1, .data = image };
 }
 
+static void free_image(struct image im) {
+    stbi_image_free(im.data);
+    im.data = NULL;
+}
+
 static struct image create_shm_image(int16_t width, int16_t height) {
     struct image im = {
         .width = width,
@@ -596,6 +601,8 @@ int main(int argc, char **argv) {
 	ctx.image = create_image("test.png");
     
     run();
+
+    free_image(ctx.image);
 
     return EXIT_SUCCESS;
 }
