@@ -413,7 +413,6 @@ static xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
     // core keyboard, we need to translate keycodes to keysyms
     // manually (although we might just want to the first one for consistency)
 
-    size_t nksym = xcb_get_keyboard_mapping_keysyms_length(ctx.keymap);
     xcb_keysym_t *ksyms = xcb_get_keyboard_mapping_keysyms(ctx.keymap);
     size_t ksym_per_kc = ctx.keymap->keysyms_per_keycode;
 
