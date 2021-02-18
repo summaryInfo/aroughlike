@@ -68,9 +68,6 @@ struct context {
     bool has_shm;
     bool has_shm_pixmaps;
 
-    int16_t width;
-    int16_t height;
-
     xcb_shm_seg_t shm_seg;
     xcb_pixmap_t shm_pixmap;
     struct image im;
@@ -211,6 +208,7 @@ static void renderer_update(struct rect rect) {
 
 static void redraw(struct rect damage) {
     image_draw_rect(ctx.im, damage, BG_COLOR);
+    image_draw_rect(ctx.im, (struct rect){ctx.im.width/2-40, ctx.im.height/2-40, 80, 80}, 0xFFFFFFFF);
     renderer_update(damage);
 }
 
@@ -444,13 +442,13 @@ static void run(void) {
                 case XCB_EXPOSE:{
                     xcb_expose_event_t *ev = (xcb_expose_event_t*)event;
                     struct rect damage = {ev->x, ev->y, ev->width, ev->height};
-                    struct rect inters = {0, 0, ctx.width, ctx.height};
+                    struct rect inters = {0, 0, ctx.im.width, ctx.im.height};
                     if (intersect_with(&inters, &damage)) redraw(inters);
                     break;
                 }
                 case XCB_CONFIGURE_NOTIFY:{
                     xcb_configure_notify_event_t *ev = (xcb_configure_notify_event_t*)event;
-                    if (ev->width != ctx.width || ev->height != ctx.height) {
+                    if (ev->width != ctx.im.width || ev->height != ctx.im.height) {
                         int16_t w = ev->width, old_w = ctx.im.width;
                         int16_t h = ev->height, old_h = ctx.im.height;
                         int16_t common_w = MIN(w, old_w);
@@ -514,7 +512,7 @@ static void run(void) {
 
         next_timeout = (SEC / FPS) - TIMEDIFF(ctx.last_draw, cur);
         if ((next_timeout <= 10000LL || ctx.force_redraw) && ctx.active) {
-            redraw((struct rect){0, 0, ctx.width, ctx.height});
+            redraw((struct rect){0, 0, ctx.im.width, ctx.im.height});
             next_timeout = (SEC / FPS);
             ctx.last_draw = cur;
             ctx.force_redraw = 0;
