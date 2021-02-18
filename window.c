@@ -416,7 +416,7 @@ static xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
     xcb_keysym_t *ksyms = xcb_get_keyboard_mapping_keysyms(ctx.keymap);
     size_t ksym_per_kc = ctx.keymap->keysyms_per_keycode;
 
-    xcb_keysym_t *entry = &ksyms[ksym_per_kc * kc];
+    xcb_keysym_t *entry = &ksyms[ksym_per_kc * (kc - xcb_get_setup(ctx.con)->min_keycode)];
     bool group = ksym_per_kc >= 3 && state & mask_mod_5 && entry[2];
     bool shift = ksym_per_kc >= 2 && state & mask_shift && entry[1];
 
