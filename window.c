@@ -490,7 +490,6 @@ static void run(void) {
                 case XCB_VISIBILITY_NOTIFY: {
                     xcb_visibility_notify_event_t *ev = (xcb_visibility_notify_event_t*)event;
                     ctx.active = ev->state != XCB_VISIBILITY_FULLY_OBSCURED;
-                    warn("Ac %d", ctx.active);
                     break;
                 }
                 case XCB_MAP_NOTIFY:
