@@ -1,0 +1,26 @@
+A Simple Rough-like game (MSU CG course, A1 variant)
+====================================================
+
+This is an implementation of a simple
+rough-like game with software rendering.
+
+## Installing dependencies
+
+I tried to minimized dependencies, so the only required libs are xcb-shm and xcb.
+They can be installed:
+
+ * On Debian derivatives (e.g. Debian/Ubuntu/Mint): `apt update && apt install libx11-xcb-dev libxcb-shm0-dev`
+ * On Arch Linux (and derivatives): `pacman -S libxcb`
+ * On Void Linux: `xbps-install -S libxcb-devel`
+
+It also requires GNU or BSD make and GCC compiler
+
+## Building and running 
+
+This program can be run with
+
+    make run
+
+To compile a program you just need to
+
+    make
