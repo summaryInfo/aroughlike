@@ -11,7 +11,7 @@ CFLAGS += -Winit-self -Wwrite-strings -Wvla
 CFLAGS += -Wmissing-attributes -Wmissing-format-attribute -Wmissing-noreturn
 CFLAGS += -Wswitch-bool -Wpacked -Wshadow -Wformat-security
 CFLAGS += -Wswitch-unreachable -Wlogical-op -Wstringop-truncation
-CFLAGS += -Wbad-function-cast -Wnested-externs -Wstrict-prototypes
+CFLAGS += -Wnested-externs -Wstrict-prototypes
 
 OBJ := window.o image.o
 
@@ -34,5 +34,8 @@ force: clean
 
 $(NAME): $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJ) $(LDLIBS) -o $@
+
+window.o: image.h util.h stb_image.h keysymdef.h
+image.o: image.h util.h
 
 .PHONY: all clean force run

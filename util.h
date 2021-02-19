@@ -12,6 +12,7 @@
 
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
+#define CLAMP(low, x, high) (MAX(MIN(x, high), low))
 #define SWAP(a, b) do{__typeof__(a) t__ = (a); (a) = (b); (b) = t__;}while(0)
 #define SEC 1000000000LL
 #define TIMEDIFF(t, d)  ((((d).tv_sec - (t).tv_sec) * SEC + ((d).tv_nsec - (t).tv_nsec)))
@@ -31,8 +32,8 @@ typedef uint32_t color_t;
 struct rect {
     int16_t x;
     int16_t y;
-    uint16_t width;
-    uint16_t height;
+    int16_t width;
+    int16_t height;
 };
 
 inline static struct rect rect_scale_up(struct rect rect, int16_t x_factor, int16_t y_factor) {

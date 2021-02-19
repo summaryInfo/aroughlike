@@ -57,6 +57,7 @@
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
 #define FPS 60
+#define TPS 20
 
 #define WINDOW_CLASS "SoftRendererExa"
 #define WINDOW_TITLE "Rough-like with software rendering"
@@ -86,6 +87,9 @@ struct context {
     struct image im;
 
     struct timespec last_draw;
+    /* Game logic is handled in fixed rate,
+     * separate from FPS */
+    struct timespec last_tick;
 
     double dpi;
 
@@ -135,14 +139,6 @@ inline static bool check_void_cookie(xcb_void_cookie_t ck) {
     }
     free(err);
     return 0;
-}
-
-inline static uint8_t color_r(color_t c) { return (c >> 16) & 0xFF; }
-inline static uint8_t color_g(color_t c) { return (c >> 8) & 0xFF; }
-inline static uint8_t color_b(color_t c) { return c & 0xFF; }
-inline static uint8_t color_a(color_t c) { return c >> 24; }
-inline static color_t mk_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
-    return ((color_t)a << 24U) | (r << 16U) | (g << 8U) | b;
 }
 
 static struct image create_image(const char *file) {
@@ -256,16 +252,26 @@ static void renderer_update(struct rect rect) {
 }
 
 static void redraw(struct rect damage) {
-    image_draw_rect(ctx.im, damage, BG_COLOR);
+    struct rect screen = (struct rect){0, 0, ctx.im.width, ctx.im.height};
+
+    (void)damage;
+
+    image_draw_rect(ctx.im, screen, BG_COLOR);
 
     int16_t x = ctx.im.width/2 + ctx.center_x;
     int16_t y = ctx.im.height/2 + ctx.center_y;
-    image_blt(ctx.im, (struct rect){x, y, 80, 80}, ctx.image, (struct rect){0, 0, ctx.image.width, ctx.image.height});
+    image_blt(ctx.im, (struct rect){ctx.im.width/2 - 100, ctx.im.height/2 - 50, 80, 80}, ctx.image, (struct rect){0, ctx.image.height - 1, ctx.image.width, -ctx.image.height}, 0);
+    image_blt(ctx.im, (struct rect){x, y, 80, 80}, ctx.image, (struct rect){0, 0, ctx.image.width, ctx.image.height}, 0);
 
     //uint32_t v = fabs(sin(ctx.last_draw.tv_sec/1000.+ctx.last_draw.tv_nsec/100000000000.))*0xFFFFFF;
     //image_draw_rect(ctx.im, (struct rect){x-40, y-40, 80, 80}, 0xFF000000 | v);
 
-    renderer_update(damage);
+    renderer_update(screen);
+}
+
+static void tick(struct timespec time) {
+    (void)time;
+    // warn("Tick  %"PRId64, (int64_t)TIMEDIFF(ctx.last_tick, time));
 }
 
 static xcb_atom_t intern_atom(const char *atom) {
@@ -356,6 +362,9 @@ static void init_context(void) {
     }
     ctx.screen = sit.data;
 
+    /* X11 color handling is complicated so we just
+     * find apperopriate 32-bit visual and use TrueColor */
+
     xcb_depth_iterator_t dit = xcb_screen_allowed_depths_iterator(ctx.screen);
     for (; dit.rem; xcb_depth_next(&dit))
         if (dit.data->depth == TRUE_COLOR_ALPHA_DEPTH) break;
@@ -366,7 +375,8 @@ static void init_context(void) {
 
     xcb_visualtype_iterator_t vit = xcb_depth_visuals_iterator(dit.data);
     for (; vit.rem; xcb_visualtype_next(&vit))
-        if (vit.data->_class == XCB_VISUAL_CLASS_TRUE_COLOR) break;
+        if (vit.data->_class == XCB_VISUAL_CLASS_TRUE_COLOR &&
+            vit.data->red_mask == 0xFF0000) break;
 
     if (vit.data->_class != XCB_VISUAL_CLASS_TRUE_COLOR) {
         xcb_disconnect(ctx.con);
@@ -385,6 +395,7 @@ static void init_context(void) {
 
     // That's kind of hack
     // Try guessing if DISPLAY refers to localhost
+    // This is required since MIT-SHM is only supported on local displays
 
     char *display = getenv("DISPLAY");
     const char *local[] = { "localhost:", "127.0.0.1:", "unix:", };
@@ -408,7 +419,8 @@ static void init_context(void) {
         }
     }
 
-    // Intern all used atoms
+    // Intern&cache all used atoms
+
     ctx.atom._NET_WM_PID = intern_atom("_NET_WM_PID");
     ctx.atom._NET_WM_NAME = intern_atom("_NET_WM_NAME");
     ctx.atom._NET_WM_ICON_NAME = intern_atom("_NET_WM_ICON_NAME");
@@ -416,13 +428,24 @@ static void init_context(void) {
     ctx.atom.WM_PROTOCOLS = intern_atom("WM_PROTOCOLS");
     ctx.atom.UTF8_STRING = intern_atom("UTF8_STRING");
 
+
+    // Find and save DPI, it might become useful later
+
     int32_t dpi = -1;
     xcb_screen_iterator_t it = xcb_setup_roots_iterator(xcb_get_setup(ctx.con));
     for (; it.rem; xcb_screen_next(&it))
         if (it.data) dpi = MAX(dpi, (it.data->width_in_pixels * 25.4)/it.data->width_in_millimeters);
     if (dpi > 0) ctx.dpi = dpi;
 
+    // To reduce number of dependencied
+    // XKB/xkbcommon is not used is this program
+    // so we need to obtain keycode-to-keysym
+    // mapping manually using core X11 protocol
+
     configure_keyboard();
+
+    // Finall let's create window
+
     create_window();
 }
 
@@ -472,8 +495,9 @@ static xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
     return entry[2*group + shift];
 }
 
-static void handle_keydown(xcb_keycode_t kc, uint16_t state) {
+static void handle_key(xcb_keycode_t kc, uint16_t state, bool pressed) {
 #define DELTA_COORD 10
+    if (!pressed) return;
 
     xcb_keysym_t ksym = get_keysym(kc, state);
     switch (ksym) {
@@ -515,7 +539,7 @@ static void run(void) {
                         int16_t common_h = MIN(h, old_h);
 
                         struct image new = create_shm_image(w, h);
-                        image_copy(new, (struct rect){0, 0, common_w, common_h}, ctx.im, 0, 0);
+                        image_blt(new, (struct rect){0, 0, common_w, common_h}, ctx.im, (struct rect){0, 0, common_w, common_h}, 0);
                         SWAP(ctx.im, new);
                         free_image(&new);
 
@@ -524,15 +548,15 @@ static void run(void) {
                     }
                     break;
                 }
-                case XCB_KEY_PRESS:{
+                case XCB_KEY_PRESS:
+                case XCB_KEY_RELEASE: {
                     xcb_key_release_event_t *ev = (xcb_key_release_event_t*)event;
-                    handle_keydown(ev->detail, ev->state);
+                    handle_key(ev->detail, ev->state, ev->response_type == XCB_KEY_PRESS);
                     break;
                 }
                 case XCB_FOCUS_IN:
                 case XCB_FOCUS_OUT:{
                     ctx.focused = event->response_type == XCB_FOCUS_IN;
-                    warn("Focus: %d", ctx.focused);
                     break;
                 }
                 case XCB_CLIENT_MESSAGE: {
@@ -544,15 +568,14 @@ static void run(void) {
                     break;
                 }
                 case XCB_UNMAP_NOTIFY:
-                    ctx.active = 0;
+                case XCB_MAP_NOTIFY:
+                    ctx.active = event->response_type == XCB_MAP_NOTIFY;
                     break;
                 case XCB_VISIBILITY_NOTIFY: {
                     xcb_visibility_notify_event_t *ev = (xcb_visibility_notify_event_t*)event;
                     ctx.active = ev->state != XCB_VISIBILITY_FULLY_OBSCURED;
                     break;
                 }
-                case XCB_MAP_NOTIFY:
-                case XCB_KEY_RELEASE:
                 case XCB_DESTROY_NOTIFY:
                 case XCB_REPARENT_NOTIFY:
                    /* ignore */
@@ -571,18 +594,25 @@ static void run(void) {
         struct timespec cur;
         clock_gettime(CLOCK_TYPE, &cur);
 
-        next_timeout = (SEC / FPS) - TIMEDIFF(ctx.last_draw, cur);
-        if ((next_timeout <= 10000LL || ctx.force_redraw) && ctx.active) {
+        int64_t next_tick = (SEC / TPS) - TIMEDIFF(ctx.last_tick, cur);
+        int64_t next_draw = (SEC / FPS) - TIMEDIFF(ctx.last_draw, cur);
+
+        if (next_tick <= 10000LL) {
+            tick(cur);
+            next_tick = (SEC / TPS);
+            ctx.last_tick = cur;
+        }
+
+        if ((next_draw <= 10000LL || ctx.force_redraw) && ctx.active) {
             redraw((struct rect){0, 0, ctx.im.width, ctx.im.height});
-            next_timeout = (SEC / FPS);
+            next_draw = (SEC / FPS);
             ctx.last_draw = cur;
             ctx.force_redraw = 0;
         }
 
-        if (!ctx.active) next_timeout = INT64_MAX;
+        next_timeout = ctx.active ? MIN(next_tick, next_timeout) : next_tick;
 
         xcb_flush(ctx.con);
-
         if (xcb_connection_has_error(ctx.con)) break;
     }
 
@@ -593,11 +623,12 @@ int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
 
-    // Load locale
+    // Load locale from environment
+    // (only CTYPE aspect to not ruin numbers
+    // parsing of stdio functions...)
     setlocale(LC_CTYPE, "");
 
     init_context();
-
 
 	ctx.image = create_image("test.png");
 

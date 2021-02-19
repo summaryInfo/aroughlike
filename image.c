@@ -3,6 +3,7 @@
 #include "util.h"
 #include "image.h"
 
+#include <math.h>
 #include <stdint.h>
 
 void image_draw_rect(struct image im, struct rect rect, color_t fg) {
@@ -15,70 +16,56 @@ void image_draw_rect(struct image im, struct rect rect, color_t fg) {
     }
 }
 
-#if 0
-void image_compose_glyph(struct image im, int16_t dx, int16_t dy, struct glyph *glyph, color_t fg, struct rect clip) {
-    struct rect rect = { dx - glyph->x, dy - glyph->y, glyph->width, glyph->height };
-    if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height}) &&
-            intersect_with(&rect, &clip)) {
-        int16_t i0 = rect.x - dx + glyph->x, j0 = rect.y - dy + glyph->y;
-        if (glyph->pixmode == pixmode_mono) {
-            for (size_t j = 0; j < (size_t)rect.height; j++) {
-                for (size_t i = 0; i < (size_t)rect.width; i++) {
-                    uint8_t alpha = glyph->data[(j0 + j) * glyph->stride + i0 + i];
-                    color_t *bg = &im.data[(rect.y + j) * im.width + (rect.x + i)];
-                    *bg =
-                        (((*bg >>  0) & 0xFF) * (255 - alpha) + ((fg >>  0) & 0xFF) * alpha) / 255 << 0 |
-                        (((*bg >>  8) & 0xFF) * (255 - alpha) + ((fg >>  8) & 0xFF) * alpha) / 255 << 8 |
-                        (((*bg >> 16) & 0xFF) * (255 - alpha) + ((fg >> 16) & 0xFF) * alpha) / 255 << 16 |
-                        (((*bg >> 24) & 0xFF) * (255 - alpha) + ((fg >> 24) & 0xFF) * alpha) / 255 << 24;
+void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode) {
+    bool fastpath = srect.width == drect.width && srect.height == drect.height;
+    double xscale = srect.width/(double)drect.width;
+    if (drect.x < 0) {
+        srect.x -= drect.x*xscale;
+        srect.width += drect.x*xscale;
+        drect.width += drect.x;
+        drect.x = 0;
+    }
+
+    double yscale = srect.height/(double)drect.height;
+    if (drect.y < 0) {
+        srect.y -= drect.y*yscale;
+        srect.height += drect.y*yscale;
+        drect.height += drect.y;
+        drect.y = 0;
+    }
+
+    drect.width = MIN(dst.width - drect.x, drect.width);
+    drect.height = MIN(dst.height - drect.y, drect.height);
+
+    if (drect.width > 0 && drect.height > 0) {
+        if (fastpath) {
+            for (size_t j = 0; j < (size_t)drect.height; j++) {
+                for (size_t i = 0; i < (size_t)drect.width; i++) {
+                    // TODO SIMD this
+                    color_t srcc = src.data[srect.x + i + src.width*(srect.y + j)];
+                    color_t *pdstc = &dst.data[(drect.y + j) * dst.width + (drect.x + i)];
+                    *pdstc = color_blend(*pdstc, srcc);
                 }
             }
         } else {
-            for (size_t j = 0; j < (size_t)rect.height; j++) {
-                for (size_t i = 0; i < (size_t)rect.width; i++) {
-                    uint8_t *alpha = &glyph->data[(j0 + j) * glyph->stride + 4 * (i0 + i)];
-                    color_t *bg = &im.data[(rect.y + j) * im.width + (rect.x + i)];
-                    *bg =
-                        (((*bg >>  0) & 0xFF) * (255 - alpha[0]) + ((fg >>  0) & 0xFF) * alpha[0]) / 255 << 0 |
-                        (((*bg >>  8) & 0xFF) * (255 - alpha[1]) + ((fg >>  8) & 0xFF) * alpha[1]) / 255 << 8 |
-                        (((*bg >> 16) & 0xFF) * (255 - alpha[2]) + ((fg >> 16) & 0xFF) * alpha[2]) / 255 << 16 |
-                        (((*bg >> 24) & 0xFF) * (255 - alpha[3]) + ((fg >> 24) & 0xFF) * alpha[3]) / 255 << 24;
+            if (mode == sample_nearest) {
+                for (size_t j = 0; j < (size_t)drect.height; j++) {
+                    for (size_t i = 0; i < (size_t)drect.width; i++) {
+                        // TODO SIMD this
+                        color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
+                        color_t *pdstc = &dst.data[(drect.y + j) * dst.width + (drect.x + i)];
+                        *pdstc = color_blend(*pdstc, srcc);
+                    }
                 }
-            }
-
-        }
-    }
-}
-#endif
-
-void image_copy(struct image im, struct rect rect, struct image src, int16_t sx, int16_t sy) {
-    rect.width = MAX(0, MIN(rect.width + sx, src.width) - sx);
-    rect.height = MAX(0, MIN(rect.height + sy, src.height) - sy);
-
-    if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
-        if (rect.y < sy || (rect.y == sy && rect.x <= sx)) {
-            for (size_t j = 0; j < (size_t)rect.height; j++) {
-                for (size_t i = 0; i < (size_t)rect.width; i++) {
-                    im.data[(rect.y + j) * im.width + (rect.x + i)] = src.data[src.width * (sy + j) + (sx + i)];
-                }
-            }
-        } else {
-            for (size_t j = rect.height; j > 0; j--) {
-                for (size_t i = rect.width; i > 0; i--) {
-                    im.data[(rect.y + j - 1) * im.width + (rect.x + i - 1)] = src.data[src.width * (sy + j - 1) + (sx + i - 1)];
-                }
-            }
-        }
-    }
-}
-
-void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect) {
-    double xscale = srect.width/(double)drect.width, yscale = srect.height/(double)drect.height;
-    if (intersect_with(&drect, &(struct rect){0, 0, dst.width, dst.height})) {
-        for (size_t j = 0; j < (size_t)drect.height; j++) {
-            for (size_t i = 0; i < (size_t)drect.width; i++) {
-                dst.data[(drect.y + j) * dst.width + (drect.x + i)] =
-                        src.data[src.width * (size_t)(srect.y + j*yscale) + (size_t)(srect.x + i*xscale)];
+            } else {
+                for (size_t j = 0; j < (size_t)drect.height; j++) {
+                        for (size_t i = 0; i < (size_t)drect.width; i++) {
+                            // TODO SIMD this
+                            color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_linear);
+                            color_t *pdstc = &dst.data[(drect.y + j) * dst.width + (drect.x + i)];
+                            *pdstc = color_blend(*pdstc, srcc);
+                        }
+                    }
             }
         }
     }
