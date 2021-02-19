@@ -48,14 +48,18 @@ inline static color_t color_mix(color_t dstc, color_t srcc, double alpha) {
 
 inline static color_t image_sample(struct image src, double x, double y, enum sampler_mode mode) {
     // Always clamp to border
-    x = CLAMP(0, x, src.width - 1);
-    y = CLAMP(0, y, src.height - 1);
+    x = MAX(0, x), y = MAX(0, y);
 
-    size_t x0 = x, y0 = y;
+    ssize_t x0 = floor(x), y0 = floor(y);
+    x0 = MIN(x0, src.width - 1);
+    y0 = MIN(y0, src.height - 1);
 
     if (UNLIKELY(mode == sample_linear)) {
         // IDK why did i implement this...
-        size_t x1 = ceil(x), y1 = (size_t)(int32_t)ceil(y)*src.width;
+        ssize_t x1 = ceil(x), y1 = ceil(y)*src.width;
+
+        x1 = MIN(x1, src.width - 1);
+        y1 = MIN(y1, src.height - 1);
 
         double valpha = y - y0, halpha = x - x0;
         y0 *= src.width;

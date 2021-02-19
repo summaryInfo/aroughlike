@@ -51,7 +51,7 @@
 #pragma GCC diagnostic pop
 
 #define TRUE_COLOR_ALPHA_DEPTH 32
-#define BG_COLOR 0xFF000000
+#define BG_COLOR 0xFFFFFFFF
 #define WINDOW_X 100
 #define WINDOW_Y 100
 #define WINDOW_WIDTH 640
@@ -81,6 +81,8 @@ struct context {
     bool force_redraw;
     bool has_shm;
     bool has_shm_pixmaps;
+    bool want_exit;
+    bool want_redraw;
 
     xcb_shm_seg_t shm_seg;
     xcb_pixmap_t shm_pixmap;
@@ -252,6 +254,8 @@ static void renderer_update(struct rect rect) {
 }
 
 static void redraw(struct rect damage) {
+    if (!ctx.want_redraw) return;
+
     struct rect screen = (struct rect){0, 0, ctx.im.width, ctx.im.height};
 
     (void)damage;
@@ -267,6 +271,7 @@ static void redraw(struct rect damage) {
     //image_draw_rect(ctx.im, (struct rect){x-40, y-40, 80, 80}, 0xFF000000 | v);
 
     renderer_update(screen);
+    ctx.want_redraw = 0;
 }
 
 static void tick(struct timespec time) {
@@ -501,10 +506,11 @@ static void handle_key(xcb_keycode_t kc, uint16_t state, bool pressed) {
 
     xcb_keysym_t ksym = get_keysym(kc, state);
     switch (ksym) {
-    case XK_w: ctx.center_y -= DELTA_COORD; break;
-    case XK_s: ctx.center_y += DELTA_COORD; break;
-    case XK_a: ctx.center_x -= DELTA_COORD; break;
-    case XK_d: ctx.center_x += DELTA_COORD; break;
+    case XK_w: ctx.center_y -= DELTA_COORD; ctx.want_redraw = 1; break;
+    case XK_s: ctx.center_y += DELTA_COORD; ctx.want_redraw = 1; break;
+    case XK_a: ctx.center_x -= DELTA_COORD; ctx.want_redraw = 1; break;
+    case XK_d: ctx.center_x += DELTA_COORD; ctx.want_redraw = 1; break;
+    case XK_Escape: ctx.want_exit = 1; break;
     }
 
 }
@@ -527,7 +533,10 @@ static void run(void) {
                     xcb_expose_event_t *ev = (xcb_expose_event_t*)event;
                     struct rect damage = {ev->x, ev->y, ev->width, ev->height};
                     struct rect inters = {0, 0, ctx.im.width, ctx.im.height};
-                    if (intersect_with(&inters, &damage)) redraw(inters);
+                    if (intersect_with(&inters, &damage)) {
+                        ctx.want_redraw = 1;
+                        redraw(inters);
+                    };
                     break;
                 }
                 case XCB_CONFIGURE_NOTIFY:{
@@ -543,8 +552,10 @@ static void run(void) {
                         SWAP(ctx.im, new);
                         free_image(&new);
 
-                        if (w >  old_w) redraw((struct rect) { common_w, 0, w - common_w, h });
-                        if (h > old_h) redraw((struct rect) { 0, common_h, common_w, h - common_h });
+                        ctx.want_redraw = 1;
+                        redraw((struct rect){0, 0, w, h});
+                        //if (w >  old_w) redraw((struct rect) { common_w, 0, w - common_w, h });
+                        //if (h > old_h) redraw((struct rect) { 0, common_h, common_w, h - common_h });
                     }
                     break;
                 }
@@ -613,7 +624,7 @@ static void run(void) {
         next_timeout = ctx.active ? MIN(next_tick, next_timeout) : next_tick;
 
         xcb_flush(ctx.con);
-        if (xcb_connection_has_error(ctx.con)) break;
+        if (xcb_connection_has_error(ctx.con) || ctx.want_exit) break;
     }
 
     free_context();
