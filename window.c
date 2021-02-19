@@ -40,7 +40,15 @@
 #include <xcb/xcb.h>
 
 #define STB_IMAGE_IMPLEMENTATION
+#pragma GCC diagnostic push
+/* Well, STB library does not have
+ * best code ever, so disable some
+ * warnings just for this header */
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
+#pragma GCC diagnostic ignored "-Wduplicated-branches"
+#pragma GCC diagnostic ignored "-Wsign-compare"
 #include "stb_image.h"
+#pragma GCC diagnostic pop
 
 #define TRUE_COLOR_ALPHA_DEPTH 32
 #define BG_COLOR 0xFF000000
@@ -51,6 +59,7 @@
 #define FPS 60
 
 #define WINDOW_CLASS "SoftRendererExa"
+#define WINDOW_TITLE "Rough-like with software rendering"
 
 void warn(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 _Noreturn void die(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
@@ -156,13 +165,8 @@ static struct image create_image(const char *file) {
             *col = mk_color(b*a/255., g*a/255., r*a/255., a);
         }
     }
-            
-    return (struct image) { .width = x, .height = y, .shmid = -1, .data = image };
-}
 
-static void free_image(struct image im) {
-    stbi_image_free(im.data);
-    im.data = NULL;
+    return (struct image) { .width = x, .height = y, .shmid = -1, .data = image };
 }
 
 static struct image create_shm_image(int16_t width, int16_t height) {
@@ -228,8 +232,8 @@ static struct image create_shm_image(int16_t width, int16_t height) {
     }
 }
 
-static void free_shm_image(struct image *im) {
-    if (ctx.has_shm) {
+static void free_image(struct image *im) {
+    if (im->shmid >= 0) {
         if (im->data) munmap(im->data, im->width * im->height * sizeof(color_t));
         if (im->shmid >= 0) close(im->shmid);
     } else {
@@ -253,11 +257,12 @@ static void renderer_update(struct rect rect) {
 
 static void redraw(struct rect damage) {
     image_draw_rect(ctx.im, damage, BG_COLOR);
-    uint32_t v = fabs(sin(ctx.last_draw.tv_sec/1000.+ctx.last_draw.tv_nsec/100000000000.))*0xFFFFFF;
 
     int16_t x = ctx.im.width/2 + ctx.center_x;
     int16_t y = ctx.im.height/2 + ctx.center_y;
     image_blt(ctx.im, (struct rect){x, y, 80, 80}, ctx.image, (struct rect){0, 0, ctx.image.width, ctx.image.height});
+
+    //uint32_t v = fabs(sin(ctx.last_draw.tv_sec/1000.+ctx.last_draw.tv_nsec/100000000000.))*0xFFFFFF;
     //image_draw_rect(ctx.im, (struct rect){x-40, y-40, 80, 80}, 0xFF000000 | v);
 
     renderer_update(damage);
@@ -277,29 +282,10 @@ static xcb_atom_t intern_atom(const char *atom) {
     return at;
 }
 
-static void window_set_default_props(void) {
-    const char *title = "Rough-like with software rendering";
-    uint32_t pid = getpid();
-
-    xcb_void_cookie_t c;
-
-    c = xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom._NET_WM_PID, XCB_ATOM_CARDINAL, 32, 1, &pid);
-    if (check_void_cookie(c)) die("Can't set PID");
-    c = xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom.WM_PROTOCOLS, XCB_ATOM_ATOM, 32, 1, &ctx.atom.WM_DELETE_WINDOW);
-    if (check_void_cookie(c)) die("Can't set WM_PROTOCOLS");
-    c = xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8, sizeof WINDOW_CLASS, WINDOW_CLASS);
-    if (check_void_cookie(c)) die("Can't set WM_CLASS");
-    c = xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom._NET_WM_NAME, ctx.atom.UTF8_STRING, 8, strlen(title), title);
-    if (check_void_cookie(c)) die("Can't set _NEW_WM_NAME");
-    c = xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom._NET_WM_ICON_NAME, ctx.atom.UTF8_STRING, 8, strlen(title), title);
-    if (check_void_cookie(c)) die("Can't set _NEW_WM_ICON_NAME");
-}
-
 static void create_window(void) {
-    ctx.active = 1;
-    ctx.focused = 1;
-
     xcb_void_cookie_t c;
+
+    /* Create window itself */
 
     uint32_t ev_mask = XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_VISIBILITY_CHANGE |
             XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_STRUCTURE_NOTIFY;
@@ -312,6 +298,9 @@ static void create_window(void) {
                                   XCB_WINDOW_CLASS_INPUT_OUTPUT, ctx.vis->visual_id, mask1, values1);
     if (check_void_cookie(c)) die("Can't create window");
 
+    /* Create graphics context used only to present
+     * window contents from backing pixmap */
+
     ctx.gc = xcb_generate_id(ctx.con);
     uint32_t mask2 = XCB_GC_FOREGROUND | XCB_GC_BACKGROUND | XCB_GC_GRAPHICS_EXPOSURES;
     uint32_t values2[3] = { BG_COLOR, BG_COLOR, 0 };
@@ -319,13 +308,24 @@ static void create_window(void) {
     c = xcb_create_gc_checked(ctx.con, ctx.gc, ctx.wid, mask2, values2);
     if (check_void_cookie(c)) die("Can't create window");
 
+    /* Set default windwow properties */
+
+    uint32_t pid = getpid();
+    xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom._NET_WM_PID, XCB_ATOM_CARDINAL, 32, 1, &pid);
+    xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom.WM_PROTOCOLS, XCB_ATOM_ATOM, 32, 1, &ctx.atom.WM_DELETE_WINDOW);
+    xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, XCB_ATOM_WM_CLASS, XCB_ATOM_STRING, 8, sizeof WINDOW_CLASS - 1, WINDOW_CLASS);
+    xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom._NET_WM_NAME, ctx.atom.UTF8_STRING, 8, sizeof WINDOW_TITLE - 1, WINDOW_TITLE);
+    xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom._NET_WM_ICON_NAME, ctx.atom.UTF8_STRING, 8, sizeof WINDOW_TITLE - 1, WINDOW_TITLE);
+
+    /* Create MIT-SHM backing pixmap */
+
     ctx.im = create_shm_image(WINDOW_WIDTH, WINDOW_HEIGHT);
     if (!ctx.im.data) die("Can't allocate image");
 
+    /* And clear it with background color */
     image_draw_rect(ctx.im, (struct rect){0, 0, ctx.im.width, ctx.im.height}, BG_COLOR);
 
-    window_set_default_props();
-
+    /* Finally, map window */
     xcb_map_window(ctx.con, ctx.wid);
     xcb_flush(ctx.con);
 }
@@ -435,7 +435,7 @@ static void free_context(void) {
         if (ctx.has_shm_pixmaps)
             xcb_free_pixmap(ctx.con, ctx.shm_pixmap);
         if (ctx.im.data)
-            free_shm_image(&ctx.im);
+            free_image(&ctx.im);
 
         xcb_free_gc(ctx.con, ctx.gc);
         xcb_destroy_window(ctx.con, ctx.wid);
@@ -517,7 +517,7 @@ static void run(void) {
                         struct image new = create_shm_image(w, h);
                         image_copy(new, (struct rect){0, 0, common_w, common_h}, ctx.im, 0, 0);
                         SWAP(ctx.im, new);
-                        free_shm_image(&new);
+                        free_image(&new);
 
                         if (w >  old_w) redraw((struct rect) { common_w, 0, w - common_w, h });
                         if (h > old_h) redraw((struct rect) { 0, common_h, common_w, h - common_h });
@@ -532,6 +532,7 @@ static void run(void) {
                 case XCB_FOCUS_IN:
                 case XCB_FOCUS_OUT:{
                     ctx.focused = event->response_type == XCB_FOCUS_IN;
+                    warn("Focus: %d", ctx.focused);
                     break;
                 }
                 case XCB_CLIENT_MESSAGE: {
@@ -599,10 +600,10 @@ int main(int argc, char **argv) {
 
 
 	ctx.image = create_image("test.png");
-    
+
     run();
 
-    free_image(ctx.image);
+    free_image(&ctx.image);
 
     return EXIT_SUCCESS;
 }

@@ -18,7 +18,7 @@ OBJ := window.o image.o
 LIBS != pkg-config xcb xcb-shm --libs
 INCLUES != pkg-config xcb xcb-shm --cflags
 
-LDLIBS += -lrt -lm -lutil $(LIBS)
+LDLIBS += -lrt -lm $(LIBS)
 CFLAGS += $(INCLUES)
 
 all: $(NAME)
