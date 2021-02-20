@@ -76,6 +76,10 @@ struct context {
     xcb_window_t wid;
     xcb_gcontext_t gc;
 
+    xcb_shm_seg_t shm_seg;
+    xcb_pixmap_t shm_pixmap;
+    struct image backbuf;
+
     bool focused;
     bool active;
     bool force_redraw;
@@ -84,16 +88,13 @@ struct context {
     bool has_shm;
     bool has_shm_pixmaps;
 
-    xcb_shm_seg_t shm_seg;
-    xcb_pixmap_t shm_pixmap;
-    struct image im;
-
     struct timespec last_draw;
     /* Game logic is handled in fixed rate,
      * separate from FPS */
     struct timespec last_tick;
 
     double dpi;
+    double scale;
 
     struct atom_ {
         xcb_atom_t _NET_WM_PID;
@@ -175,7 +176,7 @@ static struct image create_image(const char *file) {
 }
 
 static struct image create_shm_image(int16_t width, int16_t height) {
-    struct image im = {
+    struct image backbuf = {
         .width = width,
         .height = height,
         .shmid = -1,
@@ -192,17 +193,17 @@ static struct image create_shm_image(int16_t width, int16_t height) {
             uint64_t r = cur.tv_nsec;
             for (int i = 0; i < 6; ++i, r >>= 5)
                 temp[6+i] = 'A' + (r & 15) + (r & 16) * 2;
-            im.shmid = shm_open(temp, O_RDWR | O_CREAT | O_EXCL, 0600);
-        } while (im.shmid < 0 && errno == EEXIST && attempts-- > 0);
+            backbuf.shmid = shm_open(temp, O_RDWR | O_CREAT | O_EXCL, 0600);
+        } while (backbuf.shmid < 0 && errno == EEXIST && attempts-- > 0);
 
         shm_unlink(temp);
 
-        if (im.shmid < 0) return im;
+        if (backbuf.shmid < 0) return backbuf;
 
-        if (ftruncate(im.shmid, size) < 0) goto error;
+        if (ftruncate(backbuf.shmid, size) < 0) goto error;
 
-        im.data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, im.shmid, 0);
-        if (im.data == MAP_FAILED) goto error;
+        backbuf.data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, backbuf.shmid, 0);
+        if (backbuf.data == MAP_FAILED) goto error;
         xcb_void_cookie_t c;
         if (!ctx.shm_seg) {
             ctx.shm_seg = xcb_generate_id(ctx.con);
@@ -213,7 +214,7 @@ static struct image create_shm_image(int16_t width, int16_t height) {
             check_void_cookie(c);
         }
 
-        c = xcb_shm_attach_fd_checked(ctx.con, ctx.shm_seg, dup(im.shmid), 0);
+        c = xcb_shm_attach_fd_checked(ctx.con, ctx.shm_seg, dup(backbuf.shmid), 0);
         if (check_void_cookie(c)) goto error;
 
         if (ctx.has_shm_pixmaps) {
@@ -223,62 +224,64 @@ static struct image create_shm_image(int16_t width, int16_t height) {
                     ctx.wid, width, height, 32, ctx.shm_seg, 0);
         }
 
-        return im;
+        return backbuf;
     error:
         warn("Can't create image");
-        if (im.data != MAP_FAILED) munmap(im.data, size);
-        if (im.shmid >= 0) close(im.shmid);
-        im.shmid = -1;
-        im.data = NULL;
-        return im;
+        if (backbuf.data != MAP_FAILED) munmap(backbuf.data, size);
+        if (backbuf.shmid >= 0) close(backbuf.shmid);
+        backbuf.shmid = -1;
+        backbuf.data = NULL;
+        return backbuf;
     } else {
-        im.data = malloc(size);
-        return im;
+        backbuf.data = malloc(size);
+        return backbuf;
     }
 }
 
-static void free_image(struct image *im) {
-    if (im->shmid >= 0) {
-        if (im->data) munmap(im->data, im->width * im->height * sizeof(color_t));
-        if (im->shmid >= 0) close(im->shmid);
+static void free_image(struct image *backbuf) {
+    if (backbuf->shmid >= 0) {
+        if (backbuf->data) munmap(backbuf->data, backbuf->width * backbuf->height * sizeof(color_t));
+        if (backbuf->shmid >= 0) close(backbuf->shmid);
     } else {
-        if (im->data) free(im->data);
+        if (backbuf->data) free(backbuf->data);
     }
-    im->shmid = -1;
-    im->data = NULL;
+    backbuf->shmid = -1;
+    backbuf->data = NULL;
 }
 
 static void renderer_update(struct rect rect) {
     if (ctx.has_shm_pixmaps) {
         xcb_copy_area(ctx.con, ctx.shm_pixmap, ctx.wid, ctx.gc, rect.x, rect.y, rect.x, rect.y, rect.width, rect.height);
     } else if (ctx.has_shm) {
-        xcb_shm_put_image(ctx.con, ctx.wid, ctx.gc, ctx.im.width, ctx.im.height, rect.x, rect.y,
+        xcb_shm_put_image(ctx.con, ctx.wid, ctx.gc, ctx.backbuf.width, ctx.backbuf.height, rect.x, rect.y,
                           rect.width, rect.height, rect.x, rect.y, 32, XCB_IMAGE_FORMAT_Z_PIXMAP, 0, ctx.shm_seg, 0);
     } else {
-        xcb_put_image(ctx.con, XCB_IMAGE_FORMAT_Z_PIXMAP, ctx.wid, ctx.gc, ctx.im.width, rect.height,
-                      0, rect.y, 0, 32, rect.height * ctx.im.width * sizeof(color_t), (const uint8_t *)(ctx.im.data+rect.y*ctx.im.width));
+        xcb_put_image(ctx.con, XCB_IMAGE_FORMAT_Z_PIXMAP, ctx.wid, ctx.gc, ctx.backbuf.width, rect.height,
+                      0, rect.y, 0, 32, rect.height * ctx.backbuf.width * sizeof(color_t), (const uint8_t *)(ctx.backbuf.data+rect.y*ctx.backbuf.width));
     }
 }
 
 static void redraw(void) {
-    struct rect screen = (struct rect){0, 0, ctx.im.width, ctx.im.height};
+    double scale = ctx.scale;
+    int32_t scr_w = ctx.backbuf.width, scr_h = ctx.backbuf.height;
+    int32_t im_w = ctx.image.width, im_h = ctx.image.height;
 
-    image_draw_rect(ctx.im, screen, BG_COLOR);
+    /* Clear screen */
+    image_draw_rect(ctx.backbuf, (struct rect){0, 0, scr_w, scr_h}, BG_COLOR);
 
-    int16_t x = ctx.im.width/2 + ctx.center_x;
-    int16_t y = ctx.im.height/2 + ctx.center_y;
-    image_blt(ctx.im, (struct rect){ctx.im.width/2 - 100, ctx.im.height/2 - 50, ctx.image.width*10, ctx.image.height*10}, ctx.image, (struct rect){0, ctx.image.height, ctx.image.width, -ctx.image.height}, 0);
-    image_blt(ctx.im, (struct rect){x, y, ctx.image.width*10, ctx.image.height*10}, ctx.image, (struct rect){0, 0, ctx.image.width, ctx.image.height}, 0);
+    /* Draw test candles */
+    image_blt(ctx.backbuf, (struct rect){scr_w/2 - 10*scale, scr_h/2 - 10*scale, im_w*scale, im_h*scale},
+              ctx.image, (struct rect){0, im_h, im_w, -im_h}, 0);
+    image_blt(ctx.backbuf, (struct rect){scr_w/2 + ctx.center_x*scale, scr_h/2 + ctx.center_y*scale, im_w*scale, im_h*scale},
+              ctx.image, (struct rect){0, 0, im_w, im_h}, 0);
 }
 
 static void tick(struct timespec time) {
-#define DELTA_COORD 10
-
     (void)time;
-    if (ctx.keys.forward) { ctx.center_y -= DELTA_COORD; ctx.want_redraw = 1; }
-    if (ctx.keys.backward) { ctx.center_y += DELTA_COORD; ctx.want_redraw = 1; }
-    if (ctx.keys.left) { ctx.center_x -= DELTA_COORD; ctx.want_redraw = 1; }
-    if (ctx.keys.right) { ctx.center_x += DELTA_COORD; ctx.want_redraw = 1; }
+    if (ctx.keys.forward) { ctx.center_y--; ctx.want_redraw = 1; }
+    if (ctx.keys.backward) { ctx.center_y++; ctx.want_redraw = 1; }
+    if (ctx.keys.left) { ctx.center_x--; ctx.want_redraw = 1; }
+    if (ctx.keys.right) { ctx.center_x++; ctx.want_redraw = 1; }
 }
 
 static xcb_atom_t intern_atom(const char *atom) {
@@ -332,11 +335,11 @@ static void create_window(void) {
 
     /* Create MIT-SHM backing pixmap */
 
-    ctx.im = create_shm_image(WINDOW_WIDTH, WINDOW_HEIGHT);
-    if (!ctx.im.data) die("Can't allocate image");
+    ctx.backbuf = create_shm_image(WINDOW_WIDTH, WINDOW_HEIGHT);
+    if (!ctx.backbuf.data) die("Can't allocate image");
 
     /* And clear it with background color */
-    image_draw_rect(ctx.im, (struct rect){0, 0, ctx.im.width, ctx.im.height}, BG_COLOR);
+    image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
 
     /* Finally, map window */
     xcb_map_window(ctx.con, ctx.wid);
@@ -442,7 +445,8 @@ static void init_context(void) {
     xcb_screen_iterator_t it = xcb_setup_roots_iterator(xcb_get_setup(ctx.con));
     for (; it.rem; xcb_screen_next(&it))
         if (it.data) dpi = MAX(dpi, (it.data->width_in_pixels * 25.4)/it.data->width_in_millimeters);
-    if (dpi > 0) ctx.dpi = dpi;
+    ctx.dpi = dpi > 0 ? dpi : 96;
+    ctx.scale = MAX(1, dpi/12);
 
     // To reduce number of dependencied
     // XKB/xkbcommon is not used is this program
@@ -464,8 +468,8 @@ static void free_context(void) {
             xcb_shm_detach(ctx.con, ctx.shm_seg);
         if (ctx.has_shm_pixmaps)
             xcb_free_pixmap(ctx.con, ctx.shm_pixmap);
-        if (ctx.im.data)
-            free_image(&ctx.im);
+        if (ctx.backbuf.data)
+            free_image(&ctx.backbuf);
 
         xcb_free_gc(ctx.con, ctx.gc);
         xcb_destroy_window(ctx.con, ctx.wid);
@@ -509,6 +513,8 @@ static void handle_key(xcb_keycode_t kc, uint16_t state, bool pressed) {
     case XK_s: ctx.keys.backward = pressed; break;
     case XK_a: ctx.keys.left = pressed; break;
     case XK_d: ctx.keys.right = pressed; break;
+    case XK_minus: ctx.scale = MAX(1, ctx.scale - pressed);  ctx.want_redraw = 1; break;
+    case XK_plus: ctx.scale += pressed;  ctx. want_redraw = 1; break;
     case XK_Escape: ctx.want_exit = 1; break;
     }
 }
@@ -533,9 +539,9 @@ static void run(void) {
                 }
                 case XCB_CONFIGURE_NOTIFY:{
                     xcb_configure_notify_event_t *ev = (xcb_configure_notify_event_t*)event;
-                    if (ev->width != ctx.im.width || ev->height != ctx.im.height) {
+                    if (ev->width != ctx.backbuf.width || ev->height != ctx.backbuf.height) {
                         struct image new = create_shm_image(ev->width, ev->height);
-                        SWAP(ctx.im, new);
+                        SWAP(ctx.backbuf, new);
                         free_image(&new);
                         ctx.force_redraw = 1;
                     }
@@ -595,7 +601,7 @@ static void run(void) {
 
         if (((next_draw <= 10000LL && ctx.want_redraw) || ctx.force_redraw) && ctx.active) {
             redraw();
-            renderer_update((struct rect){0,0,ctx.im.width,ctx.im.height});
+            renderer_update((struct rect){0,0,ctx.backbuf.width,ctx.backbuf.height});
             next_draw = (SEC / FPS);
             ctx.last_draw = cur;
             ctx.want_redraw = 0;
