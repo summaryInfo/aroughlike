@@ -59,7 +59,7 @@ inline static color_t image_sample(struct image src, double x, double y, enum sa
         ssize_t x1 = ceil(x), y1 = ceil(y)*src.width;
 
         x1 = MIN(x1, src.width - 1);
-        y1 = MIN(y1, src.height - 1);
+        y1 = MIN(y1, src.width*(src.height - 1));
 
         double valpha = y - y0, halpha = x - x0;
         y0 *= src.width;

@@ -34,8 +34,8 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
         drect.y = 0;
     }
 
-    drect.width = MIN(dst.width - drect.x + 1, drect.width);
-    drect.height = MIN(dst.height - drect.y + 1, drect.height);
+    drect.width = MIN(dst.width - drect.x, drect.width);
+    drect.height = MIN(dst.height - drect.y, drect.height);
 
     if (drect.width > 0 && drect.height > 0) {
         if (fastpath) {

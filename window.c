@@ -57,7 +57,7 @@
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
 #define FPS 60
-#define TPS 20
+#define TPS 10
 
 #define WINDOW_CLASS "SoftRendererExa"
 #define WINDOW_TITLE "Rough-like with software rendering"
@@ -79,10 +79,10 @@ struct context {
     bool focused;
     bool active;
     bool force_redraw;
-    bool has_shm;
-    bool has_shm_pixmaps;
     bool want_exit;
     bool want_redraw;
+    bool has_shm;
+    bool has_shm_pixmaps;
 
     xcb_shm_seg_t shm_seg;
     xcb_pixmap_t shm_pixmap;
@@ -109,6 +109,13 @@ struct context {
     xcb_get_keyboard_mapping_reply_t *keymap;
 
     struct image image;
+
+    struct input_state {
+        bool forward : 1;
+        bool backward : 1;
+        bool left : 1;
+        bool right : 1;
+    } keys;
 };
 
 struct context ctx;
@@ -253,30 +260,25 @@ static void renderer_update(struct rect rect) {
     }
 }
 
-static void redraw(struct rect damage) {
-    if (!ctx.want_redraw) return;
-
+static void redraw(void) {
     struct rect screen = (struct rect){0, 0, ctx.im.width, ctx.im.height};
-
-    (void)damage;
 
     image_draw_rect(ctx.im, screen, BG_COLOR);
 
     int16_t x = ctx.im.width/2 + ctx.center_x;
     int16_t y = ctx.im.height/2 + ctx.center_y;
-    image_blt(ctx.im, (struct rect){ctx.im.width/2 - 100, ctx.im.height/2 - 50, 80, 80}, ctx.image, (struct rect){0, ctx.image.height - 1, ctx.image.width, -ctx.image.height}, 0);
-    image_blt(ctx.im, (struct rect){x, y, 80, 80}, ctx.image, (struct rect){0, 0, ctx.image.width, ctx.image.height}, 0);
-
-    //uint32_t v = fabs(sin(ctx.last_draw.tv_sec/1000.+ctx.last_draw.tv_nsec/100000000000.))*0xFFFFFF;
-    //image_draw_rect(ctx.im, (struct rect){x-40, y-40, 80, 80}, 0xFF000000 | v);
-
-    renderer_update(screen);
-    ctx.want_redraw = 0;
+    image_blt(ctx.im, (struct rect){ctx.im.width/2 - 100, ctx.im.height/2 - 50, ctx.image.width*10, ctx.image.height*10}, ctx.image, (struct rect){0, ctx.image.height, ctx.image.width, -ctx.image.height}, 0);
+    image_blt(ctx.im, (struct rect){x, y, ctx.image.width*10, ctx.image.height*10}, ctx.image, (struct rect){0, 0, ctx.image.width, ctx.image.height}, 0);
 }
 
 static void tick(struct timespec time) {
+#define DELTA_COORD 10
+
     (void)time;
-    // warn("Tick  %"PRId64, (int64_t)TIMEDIFF(ctx.last_tick, time));
+    if (ctx.keys.forward) { ctx.center_y -= DELTA_COORD; ctx.want_redraw = 1; }
+    if (ctx.keys.backward) { ctx.center_y += DELTA_COORD; ctx.want_redraw = 1; }
+    if (ctx.keys.left) { ctx.center_x -= DELTA_COORD; ctx.want_redraw = 1; }
+    if (ctx.keys.right) { ctx.center_x += DELTA_COORD; ctx.want_redraw = 1; }
 }
 
 static xcb_atom_t intern_atom(const char *atom) {
@@ -298,8 +300,8 @@ static void create_window(void) {
 
     /* Create window itself */
 
-    uint32_t ev_mask = XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_VISIBILITY_CHANGE |
-            XCB_EVENT_MASK_KEY_PRESS | XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_STRUCTURE_NOTIFY;
+    uint32_t ev_mask = XCB_EVENT_MASK_EXPOSURE | XCB_EVENT_MASK_VISIBILITY_CHANGE | XCB_EVENT_MASK_KEY_PRESS |
+            XCB_EVENT_MASK_KEY_RELEASE | XCB_EVENT_MASK_FOCUS_CHANGE | XCB_EVENT_MASK_STRUCTURE_NOTIFY;
     uint32_t mask1 =  XCB_CW_BACK_PIXEL | XCB_CW_BORDER_PIXEL | XCB_CW_BIT_GRAVITY | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP;
     uint32_t values1[5] = { BG_COLOR, BG_COLOR, XCB_GRAVITY_NORTH_WEST, ev_mask, ctx.mid };
 
@@ -501,18 +503,14 @@ static xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
 }
 
 static void handle_key(xcb_keycode_t kc, uint16_t state, bool pressed) {
-#define DELTA_COORD 10
-    if (!pressed) return;
-
     xcb_keysym_t ksym = get_keysym(kc, state);
     switch (ksym) {
-    case XK_w: ctx.center_y -= DELTA_COORD; ctx.want_redraw = 1; break;
-    case XK_s: ctx.center_y += DELTA_COORD; ctx.want_redraw = 1; break;
-    case XK_a: ctx.center_x -= DELTA_COORD; ctx.want_redraw = 1; break;
-    case XK_d: ctx.center_x += DELTA_COORD; ctx.want_redraw = 1; break;
+    case XK_w: ctx.keys.forward = pressed; break;
+    case XK_s: ctx.keys.backward = pressed; break;
+    case XK_a: ctx.keys.left = pressed; break;
+    case XK_d: ctx.keys.right = pressed; break;
     case XK_Escape: ctx.want_exit = 1; break;
     }
-
 }
 
 static void run(void) {
@@ -521,7 +519,7 @@ static void run(void) {
         .events = POLLIN | POLLHUP,
     };
 
-    for (int64_t next_timeout = SEC;;) {
+    for (int64_t next_timeout = SEC; !ctx.want_exit && !xcb_connection_has_error(ctx.con);) {
         struct timespec ts = {next_timeout / SEC, next_timeout % SEC};
         if (ppoll(&pfd, 1, &ts, NULL) < 0 && errno != EINTR)
             die("Poll error: %s", strerror(errno));
@@ -530,32 +528,16 @@ static void run(void) {
             for (xcb_generic_event_t *event; (event = xcb_poll_for_event(ctx.con)); free(event)) {
                 switch (event->response_type &= 0x7f) {
                 case XCB_EXPOSE:{
-                    xcb_expose_event_t *ev = (xcb_expose_event_t*)event;
-                    struct rect damage = {ev->x, ev->y, ev->width, ev->height};
-                    struct rect inters = {0, 0, ctx.im.width, ctx.im.height};
-                    if (intersect_with(&inters, &damage)) {
-                        ctx.want_redraw = 1;
-                        redraw(inters);
-                    };
+                    ctx.force_redraw = 1;
                     break;
                 }
                 case XCB_CONFIGURE_NOTIFY:{
                     xcb_configure_notify_event_t *ev = (xcb_configure_notify_event_t*)event;
                     if (ev->width != ctx.im.width || ev->height != ctx.im.height) {
-                        int16_t w = ev->width, old_w = ctx.im.width;
-                        int16_t h = ev->height, old_h = ctx.im.height;
-                        int16_t common_w = MIN(w, old_w);
-                        int16_t common_h = MIN(h, old_h);
-
-                        struct image new = create_shm_image(w, h);
-                        image_blt(new, (struct rect){0, 0, common_w, common_h}, ctx.im, (struct rect){0, 0, common_w, common_h}, 0);
+                        struct image new = create_shm_image(ev->width, ev->height);
                         SWAP(ctx.im, new);
                         free_image(&new);
-
-                        ctx.want_redraw = 1;
-                        redraw((struct rect){0, 0, w, h});
-                        //if (w >  old_w) redraw((struct rect) { common_w, 0, w - common_w, h });
-                        //if (h > old_h) redraw((struct rect) { 0, common_h, common_w, h - common_h });
+                        ctx.force_redraw = 1;
                     }
                     break;
                 }
@@ -572,10 +554,7 @@ static void run(void) {
                 }
                 case XCB_CLIENT_MESSAGE: {
                     xcb_client_message_event_t *ev = (xcb_client_message_event_t*)event;
-                    if (ev->format == 32 && ev->data.data32[0] == ctx.atom.WM_DELETE_WINDOW) {
-                        free(event);
-                        return;
-                    }
+                    ctx.want_exit |= ev->format == 32 && ev->data.data32[0] == ctx.atom.WM_DELETE_WINDOW;
                     break;
                 }
                 case XCB_UNMAP_NOTIFY:
@@ -614,17 +593,17 @@ static void run(void) {
             ctx.last_tick = cur;
         }
 
-        if ((next_draw <= 10000LL || ctx.force_redraw) && ctx.active) {
-            redraw((struct rect){0, 0, ctx.im.width, ctx.im.height});
+        if (((next_draw <= 10000LL && ctx.want_redraw) || ctx.force_redraw) && ctx.active) {
+            redraw();
+            renderer_update((struct rect){0,0,ctx.im.width,ctx.im.height});
             next_draw = (SEC / FPS);
             ctx.last_draw = cur;
+            ctx.want_redraw = 0;
             ctx.force_redraw = 0;
         }
 
         next_timeout = ctx.active ? MIN(next_tick, next_timeout) : next_tick;
-
         xcb_flush(ctx.con);
-        if (xcb_connection_has_error(ctx.con) || ctx.want_exit) break;
     }
 
     free_context();
