@@ -1,6 +1,6 @@
 NAME ?= game
 
-CFLAGS= -O3 -flto -march=native -g
+CFLAGS= -O3 -flto -march=native -g -ffast-math
 
 CFLAGS += -std=c11 -Wall -Wextra -Wpedantic
 CFLAGS += -Wno-unknown-warning -Wno-unknown-warning-option
@@ -13,7 +13,7 @@ CFLAGS += -Wswitch-bool -Wpacked -Wshadow -Wformat-security
 CFLAGS += -Wswitch-unreachable -Wlogical-op -Wstringop-truncation
 CFLAGS += -Wnested-externs -Wstrict-prototypes
 
-OBJ := window.o image.o
+OBJ := window.o image.o game.o
 
 LIBS != pkg-config xcb xcb-shm --libs
 INCLUES != pkg-config xcb xcb-shm --cflags
@@ -35,7 +35,8 @@ force: clean
 $(NAME): $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJ) $(LDLIBS) -o $@
 
-window.o: image.h util.h stb_image.h keysymdef.h
-image.o: image.h util.h
+window.o: image.h util.h context.h
+image.o: image.h util.h stb_image.h context.h
+game.o: context.h util.h keysymdef.h
 
 .PHONY: all clean force run
