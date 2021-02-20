@@ -105,6 +105,8 @@ inline static bool check_void_cookie(xcb_void_cookie_t ck) {
     return 0;
 }
 
+void init(void);
+void cleanup(void);
 void redraw(void);
 void tick(struct timespec time);
 xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state);

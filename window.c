@@ -382,7 +382,6 @@ static void run(void) {
         xcb_flush(ctx.con);
     }
 
-    free_context();
 }
 
 int main(int argc, char **argv) {
@@ -395,12 +394,12 @@ int main(int argc, char **argv) {
     setlocale(LC_CTYPE, "");
 
     init_context();
-
-	ctx.image = create_image("test.png");
+    init();
 
     run();
-
-    free_image(&ctx.image);
+    
+    cleanup();
+    free_context();
 
     return EXIT_SUCCESS;
 }

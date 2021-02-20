@@ -73,3 +73,10 @@ void handle_key(xcb_keycode_t kc, uint16_t state, bool pressed) {
     }
 }
 
+void init(void) {
+    ctx.image = create_image("test.png");
+}
+
+void cleanup(void) {
+    free_image(&ctx.image);
+}
