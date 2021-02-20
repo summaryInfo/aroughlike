@@ -42,14 +42,34 @@ void tick(struct timespec time) {
 void handle_key(xcb_keycode_t kc, uint16_t state, bool pressed) {
     xcb_keysym_t ksym = get_keysym(kc, state);
     switch (ksym) {
-    case XK_w: ctx.keys.forward = pressed; break;
-    case XK_s: ctx.keys.backward = pressed; break;
-    case XK_a: ctx.keys.left = pressed; break;
-    case XK_d: ctx.keys.right = pressed; break;
-    case XK_minus: ctx.scale = MAX(1, ctx.scale - pressed);  ctx.want_redraw = 1; break;
+    case XK_w:
+        ctx.keys.forward = pressed;
+        ctx.tick_early = !ctx.keys.forward && pressed;
+        break;
+    case XK_s:
+        ctx.keys.backward = pressed;
+        ctx.tick_early = !ctx.keys.backward && pressed;
+        break;
+    case XK_a:
+        ctx.keys.left = pressed;
+        ctx.tick_early = !ctx.keys.left && pressed;
+        break;
+    case XK_d:
+        ctx.keys.right = pressed;
+        ctx.tick_early = !ctx.keys.right && pressed;
+        break;
+    case XK_minus:
+        ctx.scale = MAX(1, ctx.scale - pressed);
+        ctx.want_redraw = 1;
+        break;
     case XK_equal:
-    case XK_plus: ctx.scale += pressed;  ctx. want_redraw = 1; break;
-    case XK_Escape: ctx.want_exit = 1; break;
+    case XK_plus:
+        ctx.scale += pressed;
+        ctx.want_redraw = 1;
+        break;
+    case XK_Escape:
+        ctx.want_exit = 1;
+        break;
     }
 }
 

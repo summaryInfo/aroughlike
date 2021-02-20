@@ -356,10 +356,11 @@ static void run(void) {
         /* Game logic is handled TPS times a second */
 
         int64_t next_tick = (SEC / TPS) - TIMEDIFF(ctx.last_tick, cur);
-        if (next_tick <= 10000LL) {
+        if (next_tick <= 10000LL || ctx.tick_early) {
             tick(cur);
-            next_tick = (SEC / TPS);
+            next_tick = MAX(0, next_tick) + (SEC / TPS);
             ctx.last_tick = cur;
+            ctx.tick_early = 0;
         }
 
         /* Game is drawn FPS times a second, or if forced

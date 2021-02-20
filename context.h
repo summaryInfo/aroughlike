@@ -55,6 +55,7 @@ struct context {
     bool force_redraw;
     bool want_exit;
     bool want_redraw;
+    bool tick_early;
     bool has_shm;
     bool has_shm_pixmaps;
 
