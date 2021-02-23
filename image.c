@@ -26,7 +26,6 @@
 #include "stb_image.h"
 #pragma GCC diagnostic pop
 
-
 struct image create_image(const char *file) {
     int x, y, n;
     color_t *image = (void *)stbi_load(file, &x, &y, &n, sizeof(color_t));
@@ -34,21 +33,25 @@ struct image create_image(const char *file) {
         die("Can't load image: %s", stbi_failure_reason());
     }
 
+    color_t *restrict data = aligned_alloc(CACHE_LINE, x*y*sizeof(color_t));
+
     // We need to swap channels since we expect BGR
     // And also X11 uses premultiplied alpha channel
     // (And this is a one-time conversion, so speed does not matter)
     for (size_t yi = 0; yi < (size_t)y; yi++) {
         for (size_t xi = 0; xi < (size_t)x; xi++) {
-            color_t *col = &image[xi+yi*x];
-            uint8_t a = color_a(*col);
-            uint8_t r = color_r(*col);
-            uint8_t g = color_g(*col);
-            uint8_t b = color_b(*col);
-            *col = mk_color(b*a/255., g*a/255., r*a/255., a);
+            color_t col = image[xi+yi*x];
+            uint8_t a = color_a(col);
+            uint8_t r = color_r(col);
+            uint8_t g = color_g(col);
+            uint8_t b = color_b(col);
+            data[yi*x+xi] = mk_color(b*a/255., g*a/255., r*a/255., a);
         }
     }
 
-    return (struct image) { .width = x, .height = y, .shmid = -1, .data = image };
+    free(image);
+
+    return (struct image) { .width = x, .height = y, .shmid = -1, .data = data };
 }
 
 struct image create_shm_image(int16_t width, int16_t height) {
@@ -109,7 +112,7 @@ struct image create_shm_image(int16_t width, int16_t height) {
         backbuf.data = NULL;
         return backbuf;
     } else {
-        backbuf.data = malloc(size);
+        backbuf.data = aligned_alloc(CACHE_LINE, size);
         return backbuf;
     }
 }
@@ -126,10 +129,11 @@ void free_image(struct image *backbuf) {
 }
 
 void image_draw_rect(struct image im, struct rect rect, color_t fg) {
+    color_t *data = __builtin_assume_aligned(im.data, CACHE_LINE);
     if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
         for (size_t j = 0; j < (size_t)rect.height; j++) {
             for (size_t i = 0; i < (size_t)rect.width; i++) {
-                im.data[(rect.y + j) * im.width + (rect.x + i)] = fg;
+                data[(rect.y + j) * im.width + (rect.x + i)] = fg;
             }
         }
     }
@@ -143,13 +147,16 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
     drect.width = MIN(dst.width - drect.x, drect.width);
     drect.height = MIN(dst.height - drect.y, drect.height);
 
+    color_t *sdata = __builtin_assume_aligned(src.data, CACHE_LINE);
+    color_t *ddata = __builtin_assume_aligned(dst.data, CACHE_LINE);
+
     if (drect.width > 0 && drect.height > 0) {
         if (fastpath) {
             for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
                 for (size_t i = MAX(-drect.x, 0); i < (size_t)drect.width; i++) {
                     // TODO SIMD this
-                    color_t srcc = src.data[srect.x + i + src.width*(srect.y + j)];
-                    color_t *pdstc = &dst.data[(drect.y + j) * dst.width + (drect.x + i)];
+                    color_t srcc = sdata[srect.x + i + src.width*(srect.y + j)];
+                    color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
                     *pdstc = color_blend(*pdstc, srcc);
                 }
             }
@@ -160,7 +167,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                     for (size_t i = MAX(-drect.x, 0); i < (size_t)drect.width; i++) {
                         // TODO SIMD this
                         color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
-                        color_t *pdstc = &dst.data[(drect.y + j) * dst.width + (drect.x + i)];
+                        color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
                         *pdstc = color_blend(*pdstc, srcc);
                     }
                 }
@@ -169,7 +176,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                         for (size_t i = MAX(-drect.x, 0); i < (size_t)drect.width; i++) {
                             // TODO SIMD this
                             color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_linear);
-                            color_t *pdstc = &dst.data[(drect.y + j) * dst.width + (drect.x + i)];
+                            color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
                             *pdstc = color_blend(*pdstc, srcc);
                         }
                     }

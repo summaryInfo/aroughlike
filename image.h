@@ -8,6 +8,8 @@
 #include <math.h>
 #include <stdint.h>
 
+#define CACHE_LINE 64
+
 struct image {
     int16_t width;
     int16_t height;
@@ -54,6 +56,8 @@ inline static color_t image_sample(struct image src, double x, double y, enum sa
     x0 = MIN(x0, src.width - 1);
     y0 = MIN(y0, src.height - 1);
 
+    color_t *data = __builtin_assume_aligned(src.data, CACHE_LINE);
+
     if (UNLIKELY(mode == sample_linear)) {
         // IDK why did i implement this...
         ssize_t x1 = ceil(x), y1 = ceil(y)*src.width;
@@ -64,12 +68,12 @@ inline static color_t image_sample(struct image src, double x, double y, enum sa
         double valpha = y - y0, halpha = x - x0;
         y0 *= src.width;
 
-        color_t v0 = color_mix(src.data[x0+y0], src.data[x1+y0], halpha);
-        color_t v1 = color_mix(src.data[x0+y1], src.data[x1+y1], halpha);
+        color_t v0 = color_mix(data[x0+y0], data[x1+y0], halpha);
+        color_t v1 = color_mix(data[x0+y1], data[x1+y1], halpha);
 
         return color_mix(v0, v1, valpha);
     } else {
-        return src.data[x0 + y0*src.width];
+        return data[x0 + y0*src.width];
     }
 }
 
