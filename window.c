@@ -135,6 +135,7 @@ static void create_window(void) {
 }
 
 static void configure_keyboard(void) {
+    if (ctx.keymap) free(ctx.keymap);
     const struct xcb_setup_t *setup = xcb_get_setup(ctx.con);
 
     xcb_get_keyboard_mapping_cookie_t res = xcb_get_keyboard_mapping(ctx.con, setup->min_keycode, setup->max_keycode - setup->min_keycode + 1);
@@ -333,6 +334,11 @@ static void run(void) {
                 case XCB_VISIBILITY_NOTIFY: {
                     xcb_visibility_notify_event_t *ev = (xcb_visibility_notify_event_t*)event;
                     ctx.active = ev->state != XCB_VISIBILITY_FULLY_OBSCURED;
+                    break;
+                }
+                case XCB_MAPPING_NOTIFY: {
+                    xcb_mapping_notify_event_t *ev = (xcb_mapping_notify_event_t*)event;
+                    if (ev->request == XCB_MAPPING_KEYBOARD) configure_keyboard();
                     break;
                 }
                 case XCB_DESTROY_NOTIFY:
