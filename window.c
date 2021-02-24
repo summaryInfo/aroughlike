@@ -234,7 +234,7 @@ static void init_context(void) {
     for (; it.rem; xcb_screen_next(&it))
         if (it.data) dpi = MAX(dpi, (it.data->width_in_pixels * 25.4)/it.data->width_in_millimeters);
     ctx.dpi = dpi > 0 ? dpi : 96;
-    ctx.scale = MAX(1, dpi/12);
+    ctx.scale = MAX(1, dpi/24);
 
     /* To reduce number of dependencied
      * XKB/xkbcommon is not used is this program

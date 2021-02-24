@@ -129,7 +129,8 @@ void tilemap_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y) {
                 tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, zi);
                 if (tile == NOTILE) continue;
                 tileset_draw_tile(dst, map->sets[TILESET_ID(tile)], TILE_ID(tile),
-                                  x + xi*map->tile_width, y + yi*map->tile_height);
+                                  x + xi*map->tile_width*map->sets[0]->scale,
+                                  y + yi*map->tile_height*map->sets[0]->scale);
             }
         }
     }
@@ -140,8 +141,10 @@ void tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, 
     assert(x >= 0 && x < (ssize_t)map->width);
     assert(y >= 0 && y < (ssize_t)map->height);
     assert(layer >= 0 && layer < TILES_PER_CELL);
-    assert(TILESET_ID(tile) < map->nsets);
-    assert(TILE_ID(tile) < map->sets[TILESET_ID(tile)]->ntiles);
+    if (tile != NOTILE) {
+        assert(TILESET_ID(tile) < map->nsets);
+        assert(TILE_ID(tile) < map->sets[TILESET_ID(tile)]->ntiles);
+    }
 
     tilemap_set_tile_unsafe(map, x, y, layer, tile);
 }

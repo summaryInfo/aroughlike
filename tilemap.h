@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 
-#define TILES_PER_CELL 2
+#define TILES_PER_CELL 3
 #define TILESET_ID(x) ((x) >> 10)
 #define TILE_ID(x) ((x) & 0x3FF)
 #define MKTILE(set, id) (((set) << 10) | (id))
