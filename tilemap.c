@@ -134,10 +134,9 @@ void tilemap_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y) {
             }
         }
     }
-
 }
 
-void tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
+tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
     assert(x >= 0 && x < (ssize_t)map->width);
     assert(y >= 0 && y < (ssize_t)map->height);
     assert(layer >= 0 && layer < TILES_PER_CELL);
@@ -146,11 +145,24 @@ void tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, 
         assert(TILE_ID(tile) < map->sets[TILESET_ID(tile)]->ntiles);
     }
 
-    tilemap_set_tile_unsafe(map, x, y, layer, tile);
+    return tilemap_set_tile_unsafe(map, x, y, layer, tile);
 }
 
 void tilemap_set_scale(struct tilemap *map, double scale) {
     for (size_t i = 0; i < map->nsets; i++) {
         tileset_set_scale(map->sets[i], scale);
+    }
+}
+
+void tilemap_animation_tick(struct tilemap *map) {
+    for (size_t yi = 0; yi < map->height; yi++) {
+        for (size_t xi = 0; xi < map->width; xi++) {
+            for (size_t zi = 1; zi < TILES_PER_CELL; zi++) {
+                tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, zi);
+                if (tileid == NOTILE) continue;
+                struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
+                tilemap_set_tile_unsafe(map, xi, yi, zi, MKTILE(TILESET_ID(tileid), tile->next_frame));
+            }
+        }
     }
 }

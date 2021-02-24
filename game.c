@@ -27,40 +27,16 @@
 #define NTILESETS 3
 
 #define TILE_VOID MKTILE(0, 10*7+8)
-
-#define TILE_WALL_TL MKTILE(0, 10*0+0)
-#define TILE_WALL_T0 MKTILE(0, 10*0+1)
-#define TILE_WALL_T1 MKTILE(0, 10*0+2)
-#define TILE_WALL_T2 MKTILE(0, 10*0+3)
-#define TILE_WALL_T3 MKTILE(0, 10*0+4)
-#define TILE_WALL_TR MKTILE(0, 10*0+5)
-
-#define TILE_WALL_0L MKTILE(0, 10*1+0)
-#define TILE_WALL_1L MKTILE(0, 10*2+0)
-#define TILE_WALL_2L MKTILE(0, 10*3+0)
-#define TILE_WALL_3L MKTILE(0, 10*4+0)
-#define TILE_WALL_0R MKTILE(0, 10*1+5)
-#define TILE_WALL_1R MKTILE(0, 10*2+5)
-#define TILE_WALL_2R MKTILE(0, 10*3+5)
-#define TILE_WALL_3R MKTILE(0, 10*4+5)
-
-#define TILE_WALL_BL MKTILE(0, 10*4+0)
-#define TILE_WALL_B0 MKTILE(0, 10*4+1)
-#define TILE_WALL_B1 MKTILE(0, 10*4+2)
-#define TILE_WALL_B2 MKTILE(0, 10*4+3)
-#define TILE_WALL_B3 MKTILE(0, 10*4+4)
-#define TILE_WALL_BR MKTILE(0, 10*4+5)
-
 #define TILE_FLOOR MKTILE(0, 10*0+6)
 #define TILE_PLAYER MKTILE(2, 0*4+0)
 #define TILE_TRAP MKTILE(1, 24*4+2)
-
 #define TILE_EXIT MKTILE(0, 10*3+9)
-
 
 struct gamestate {
     struct tilemap *map;
     struct tileset *tilesets[NTILESETS];
+    char *mapchars;
+    size_t mapchars_size;
 
     int16_t camera_x;
     int16_t camera_y;
@@ -86,31 +62,52 @@ void redraw(void) {
 
 #define ENT_LAYER 2
 
+enum wall_type {
+    t_void,
+    t_floor,
+    t_wall,
+};
+
+inline static enum wall_type get_wall_type(char *ptr, int width, int height, int x, int y) {
+    if (width == x || x == -1) return t_void;
+    if (height == y || y == -1) return t_void;
+
+    switch (ptr[x+y*(width+1)]) {
+    case ' ':
+        return t_void;
+    case '.':
+    case '@':
+    case 'x':
+    case 'T':
+        return t_floor;
+    case '#':
+        return t_wall;
+    default:
+        assert(0);
+    }
+}
+
 /* This function is called TPS times a second
  * (this is a place where all game logic resides) */
 void tick(struct timespec time) {
     (void)time;
 
-    if (state.keys.forward) {
-        tilemap_set_tile(state.map, state.char_x, state.char_y--, ENT_LAYER, NOTILE);
-        tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, TILE_PLAYER);
-        ctx.want_redraw = 1;
+    tilemap_animation_tick(state.map);
+    
+    tile_t old_player = tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, NOTILE);
+    int dx = state.keys.right - state.keys.left;
+    int dy = state.keys.backward - state.keys.forward;
+
+    enum wall_type wt = get_wall_type(state.mapchars, state.map->width,
+                                      state.map->height, state.char_x + dx, state.char_y + dy);
+    if (wt == t_floor) {
+        state.char_x += dx;
+        state.char_y += dy;
     }
-    if (state.keys.backward) {
-        tilemap_set_tile(state.map, state.char_x, state.char_y++, ENT_LAYER, NOTILE);
-        tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, TILE_PLAYER);
-        ctx.want_redraw = 1;
-    }
-    if (state.keys.left) {
-        tilemap_set_tile(state.map, state.char_x--, state.char_y, ENT_LAYER, NOTILE);
-        tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, TILE_PLAYER);
-        ctx.want_redraw = 1;
-    }
-    if (state.keys.right) {
-        tilemap_set_tile(state.map, state.char_x++, state.char_y, ENT_LAYER, NOTILE);
-        tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, TILE_PLAYER);
-        ctx.want_redraw = 1;
-    }
+
+    tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, old_player);
+
+    ctx.want_redraw = 1;
 }
 
 /* This function is called on every key press */
@@ -150,37 +147,14 @@ void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     }
 }
 
-enum wall_type {
-    t_void,
-    t_floor,
-    t_wall,
-};
-
-inline static enum wall_type get_wall_type(char *ptr, int width, int height, int x, int y) {
-    if (width == x || x == -1) return t_void;
-    if (height == y || y == -1) return t_void;
-
-    switch (ptr[x+y*(width+1)]) {
-    case ' ':
-        return t_void;
-    case '.':
-    case '@':
-    case 'x':
-    case 'T':
-        return t_floor;
-    case '#':
-        return t_wall;
-    default:
-        warn("%c", ptr[x+y*width]);
-        assert(0);
-    }
-}
-
-
 tile_t decode_wall(char *a, int w, int h, int x, int y) {
     enum wall_type bottom = get_wall_type(a, w, h, x, y + 1);
     enum wall_type right = get_wall_type(a, w, h, x + 1, y);
     enum wall_type left = get_wall_type(a, w, h, x - 1, y);
+
+    // Unfortunately tileset I use does not
+    // contain all combinations of walls...
+    // But lets try to get the best approximation
 
     if (bottom == t_floor) return MKTILE(0, 1 + (rand()&3));
     if (left == t_floor) return MKTILE(0, 5 + 10*(rand()&3));
@@ -192,18 +166,15 @@ tile_t decode_wall(char *a, int w, int h, int x, int y) {
         return MKTILE(0, 4*10 + 1 + (rand()&3));
     }
 
-    // Everywhere below: bottom == t_wall
-
     if (left == t_wall && right == t_void) return MKTILE(0, 5 + 10*(rand()&3));
     if (left == t_void && right == t_wall) return MKTILE(0, 10*(rand()&3));
 
-
-    //if (left == t_wall && right == t_void) {
-    //    return rand()&1 ? MKTILE(0, 5*10 + 3) : MKTILE(0, 5*10 + 5);
-    //}
-    //if (left == t_void && right == t_wall) {
-    //    return rand()&1 ? MKTILE(0, 5*10 + 0) : MKTILE(0, 5*10 + 4);
-    //}
+    if (left == t_wall && right == t_wall) {
+        bool bl = get_wall_type(a, w, h, x - 1, y + 1) == t_void;
+        bool br = get_wall_type(a, w, h, x + 1, y + 1) == t_void;
+        if (bl & !br) return MKTILE(0, 5*10 + 3 + 2*(rand()&1));
+        if (bl & !br) return MKTILE(0, 5*10 + 4*(rand()&1));
+    }
 
     return MKTILE(0, 7*10+9);
 }
@@ -305,7 +276,7 @@ format_error:
             x++;
             break;
         case 'T': /* trap */
-            tilemap_set_tile(map, x++, y, 0, TILE_TRAP);
+            tilemap_set_tile(map, x++, y, 1, TILE_TRAP);
             break;
         case 'x': /* exit */
             tilemap_set_tile(map, x, y, 1, TILE_EXIT);
@@ -323,7 +294,11 @@ format_error:
         }
     }
 
-    munmap(addr, statbuf.st_size + 1);
+    if (state.mapchars)
+        munmap(state.mapchars, state.mapchars_size);
+
+    state.mapchars = addr;
+    state.mapchars_size = statbuf.st_size + 1;
     return map;
 }
 
@@ -355,8 +330,9 @@ void init(void) {
                     /* In animated tileset_descs one row of tileset
                      * is one animation, and the width of tileset
                      * is the number of frames of animation */
-                    .next_frame = tileset_descs[i].animated ? tile_id +
-                        (tile_id + 1 % tileset_descs[i].x) - (tile_id % tileset_descs[i].x) : tile_id,
+                    .next_frame = tileset_descs[i].animated ?
+                            y*tileset_descs[i].x + (x + 1) % tileset_descs[i].x :
+                            tile_id,
                 };
                 tile_id++;
             }
@@ -370,5 +346,6 @@ void init(void) {
 
 void cleanup(void) {
     free_tilemap(state.map);
+    munmap(state.mapchars, state.mapchars_size);
     for (size_t i = 0; i < NTILESETS; i++) unref_tileset(state.tilesets[i]);
 }

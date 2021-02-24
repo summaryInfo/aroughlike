@@ -52,13 +52,16 @@ struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, 
 void free_tilemap(struct tilemap *map);
 tile_t tilemap_add_tileset(struct tilemap *map, struct tileset *tileset);
 void tilemap_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y);
-void tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile);
+tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile);
 void tilemap_set_scale(struct tilemap *map, double scale);
 tile_t tilemap_get_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer);
-void tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile);
+void tilemap_animation_tick(struct tilemap *map);
 
-inline static void tilemap_set_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
-    map->tiles[layer + x*TILES_PER_CELL + y*TILES_PER_CELL*map->width] = tile;
+inline static tile_t tilemap_set_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
+    tile_t *tilep = &map->tiles[layer + x*TILES_PER_CELL + y*TILES_PER_CELL*map->width];
+    tile_t old = *tilep;
+    *tilep = tile;
+    return old;
 }
 
 inline static tile_t tilemap_get_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer) {
