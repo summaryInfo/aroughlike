@@ -159,10 +159,17 @@ tile_t decode_wall(char *a, int w, int h, int x, int y) {
     enum wall_type bottom = get_wall_type(a, w, h, x, y + 1);
     enum wall_type right = get_wall_type(a, w, h, x + 1, y);
     enum wall_type left = get_wall_type(a, w, h, x - 1, y);
+    enum wall_type bottom_right = get_wall_type(a, w, h, x + 1, y + 1);
+    enum wall_type bottom_left = get_wall_type(a, w, h, x - 1, y + 1);
 
     // Unfortunately tileset I use does not
     // contain all combinations of walls...
     // But lets try to get the best approximation
+
+    if (left == t_wall && bottom == t_wall && bottom_left == t_void)
+        return MKTILE(0, 5*10 + 3 + 2*(rand()&1));
+    if (right == t_wall && bottom == t_wall && bottom_right == t_void)
+        return MKTILE(0, 5*10 + 4*(rand()&1));
 
     if (bottom == t_floor) return MKTILE(0, 1 + (rand()&3));
     if (left == t_floor) return MKTILE(0, 5 + 10*(rand()&3));
@@ -176,13 +183,6 @@ tile_t decode_wall(char *a, int w, int h, int x, int y) {
 
     if (left == t_wall && right == t_void) return MKTILE(0, 5 + 10*(rand()&3));
     if (left == t_void && right == t_wall) return MKTILE(0, 10*(rand()&3));
-
-    if (left == t_wall && right == t_wall) {
-        bool bl = get_wall_type(a, w, h, x - 1, y + 1) == t_void;
-        bool br = get_wall_type(a, w, h, x + 1, y + 1) == t_void;
-        if (bl & !br) return MKTILE(0, 5*10 + 3 + 2*(rand()&1));
-        if (bl & !br) return MKTILE(0, 5*10 + 4*(rand()&1));
-    }
 
     return MKTILE(0, 7*10+9);
 }
