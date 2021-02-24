@@ -100,8 +100,16 @@ void tick(struct timespec time) {
 
     enum wall_type wt = get_wall_type(state.mapchars, state.map->width,
                                       state.map->height, state.char_x + dx, state.char_y + dy);
+    enum wall_type wt1 = get_wall_type(state.mapchars, state.map->width,
+                                      state.map->height, state.char_x + dx, state.char_y);
+    enum wall_type wt2 = get_wall_type(state.mapchars, state.map->width,
+                                      state.map->height, state.char_x, state.char_y + dy);
     if (wt == t_floor) {
         state.char_x += dx;
+        state.char_y += dy;
+    } else if (wt1 == t_floor) {
+        state.char_x += dx;
+    } else if (wt2 == t_floor) {
         state.char_y += dy;
     }
 
