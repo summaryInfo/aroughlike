@@ -127,10 +127,9 @@ void tilemap_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y) {
         for (size_t xi = 0; xi < map->width; xi++) {
             for (size_t zi = 0; zi < TILES_PER_CELL; zi++) {
                 tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, zi);
-                if (tile != NOTILE) {
-                    tileset_draw_tile(dst, map->sets[TILESET_ID(tile)], TILE_ID(tile),
-                                      x + xi*map->tile_width, y + yi*map->tile_height);
-                }
+                if (tile == NOTILE) continue;
+                tileset_draw_tile(dst, map->sets[TILESET_ID(tile)], TILE_ID(tile),
+                                  x + xi*map->tile_width, y + yi*map->tile_height);
             }
         }
     }
