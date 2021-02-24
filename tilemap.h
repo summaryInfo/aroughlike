@@ -28,7 +28,7 @@ struct tileset {
         int16_t origin_y;
         /* Next animation frame */
         int32_t next_frame;
-    } tiles[];
+    } *tiles;
 };
 
 struct tilemap {

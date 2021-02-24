@@ -76,18 +76,7 @@ struct context {
         xcb_atom_t UTF8_STRING;
     } atom;
 
-    int16_t center_x, center_y;
-
     xcb_get_keyboard_mapping_reply_t *keymap;
-
-    struct image image;
-
-    struct input_state {
-        bool forward : 1;
-        bool backward : 1;
-        bool left : 1;
-        bool right : 1;
-    } keys;
 };
 
 extern struct context ctx;

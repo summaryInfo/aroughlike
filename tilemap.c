@@ -6,25 +6,25 @@
 #include <string.h>
 
 struct tileset *create_tileset(const char *path, struct tile *tiles, size_t ntiles) {
-    struct tileset *set = malloc(sizeof(*set) + sizeof(*tiles)*ntiles);
+    struct tileset *set = calloc(1, sizeof(*set));
     assert(set);
     set->img = create_image(path);
     assert(set->img.data);
     set->ntiles = ntiles;
+    set->tiles = tiles;
     set->refc = 1;
-    memcpy(set->tiles, tiles, ntiles*sizeof(*tiles));
 
     for (size_t i = 0; i < ntiles; i++) {
         if (set->tiles[i].pos.width > 0) {
             assert(set->tiles[i].pos.x >= 0);
-            assert(set->tiles[i].pos.x + set->tiles[i].pos.width < set->img.width);
+            assert(set->tiles[i].pos.x + set->tiles[i].pos.width <= set->img.width);
         } else {
             assert(set->tiles[i].pos.x < set->img.width);
             assert(set->tiles[i].pos.x + set->tiles[i].pos.width >= 0);
         }
         if (set->tiles[i].pos.height > 0) {
             assert(set->tiles[i].pos.y >= 0);
-            assert(set->tiles[i].pos.y + set->tiles[i].pos.height < set->img.height);
+            assert(set->tiles[i].pos.y + set->tiles[i].pos.height <= set->img.height);
         } else {
             assert(set->tiles[i].pos.y < set->img.height);
             assert(set->tiles[i].pos.y + set->tiles[i].pos.height >= 0);
@@ -38,6 +38,7 @@ void unref_tileset(struct tileset *set) {
     assert(set->refc);
     if (!--set->refc) {
         free_image(&set->img);
+        free(set->tiles);
         free(set);
     }
 }
@@ -126,8 +127,10 @@ void tilemap_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y) {
         for (size_t xi = 0; xi < map->width; xi++) {
             for (size_t zi = 0; zi < TILES_PER_CELL; zi++) {
                 tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, zi);
-                tileset_draw_tile(dst, map->sets[TILESET_ID(tile)], TILE_ID(tile),
-                                  x + xi*map->tile_width, y + yi*map->tile_height);
+                if (tile != NOTILE) {
+                    tileset_draw_tile(dst, map->sets[TILESET_ID(tile)], TILE_ID(tile),
+                                      x + xi*map->tile_width, y + yi*map->tile_height);
+                }
             }
         }
     }
