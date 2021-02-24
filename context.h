@@ -13,7 +13,7 @@
 #include <xcb/xcb.h>
 
 #define TRUE_COLOR_ALPHA_DEPTH 32
-#define BG_COLOR 0xFFFFFFFF
+#define BG_COLOR 0xFF25131A
 #define WINDOW_X 100
 #define WINDOW_Y 100
 #define WINDOW_WIDTH 640
