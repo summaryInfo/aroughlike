@@ -60,9 +60,6 @@ struct context {
     bool has_shm_pixmaps;
 
     struct timespec last_draw;
-    /* Game logic is handled in fixed rate,
-     * separate from FPS */
-    struct timespec last_tick;
 
     double dpi;
     double scale;
@@ -81,9 +78,6 @@ struct context {
 
 extern struct context ctx;
 
-void warn(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
-_Noreturn void die(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
-
 inline static bool check_void_cookie(xcb_void_cookie_t ck) {
     xcb_generic_error_t *err = xcb_request_check(ctx.con, ck);
     if (err) {
@@ -96,8 +90,8 @@ inline static bool check_void_cookie(xcb_void_cookie_t ck) {
 
 void init(void);
 void cleanup(void);
-void redraw(void);
-void tick(struct timespec time);
+void redraw(int64_t delta);
+int64_t tick(struct timespec current);
 xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state);
 void handle_key(xcb_keycode_t kc, uint16_t state, bool pressed);
 

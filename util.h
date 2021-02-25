@@ -84,4 +84,8 @@ inline static bool intersect_with(struct rect *src, struct rect *dst) {
             return 1;
         }
 }
+
+void warn(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+_Noreturn void die(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
+
 #endif

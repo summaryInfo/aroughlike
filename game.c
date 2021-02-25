@@ -9,6 +9,7 @@
 #include <assert.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -43,6 +44,21 @@ struct gamestate {
     int16_t char_x;
     int16_t char_y;
 
+    enum state {
+        s_normal,
+        s_win,
+        s_game_over,
+    } state;
+
+    int level;
+
+    /* Game logic is handled in fixed rate, separate from FPS */
+    struct timespec last_tick;
+    /* Animations are also handled separately */
+    struct timespec last_frame;
+    /* Only one early tick is allowed */
+    bool ticked_early;
+
     struct input_state {
         bool forward : 1;
         bool backward : 1;
@@ -51,77 +67,113 @@ struct gamestate {
     } keys;
 } state;
 
-/* This is main drawing function, that is called
- * FPS times a second */
-void redraw(void) {
-    /* Clear screen */
-    image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
-    /* Draw map */
-    tilemap_draw(ctx.backbuf, state.map, state.camera_x, state.camera_y);
-}
+void load_map_from_file(const char *file);
 
 #define ENT_LAYER 2
 
-enum wall_type {
-    t_void,
-    t_floor,
-    t_wall,
-};
 
-inline static enum wall_type get_wall_type(char *ptr, int width, int height, int x, int y) {
-    if (width == x || x == -1) return t_void;
-    if (height == y || y == -1) return t_void;
+/* This is main drawing function, that is called
+ * FPS times a second */
+void redraw(int64_t delta) {
+    (void)delta;
 
-    switch (ptr[x+y*(width+1)]) {
-    case ' ':
-        return t_void;
-    case '.':
-    case '@':
-    case 'x':
-    case 'T':
-        return t_floor;
-    case '#':
-        return t_wall;
-    default:
-        assert(0);
+    /* Clear screen */
+    image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
+
+    /* Draw map */
+    tilemap_draw(ctx.backbuf, state.map, state.camera_x, state.camera_y);
+
+    if (state.state == s_win) /* Draw win screen */ {
+        image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
+                        ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFF0000FF);
+    } else if (state.state == s_game_over) /* Draw game over message */ {
+        image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
+                        ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFFFF0000);
     }
+}
+
+#define WALL '#'
+#define TRAP 'T'
+#define VOID ' '
+#define EXIT 'x'
+
+inline static char get_cell(int x, int y) {
+    if ((ssize_t)state.map->width <= x || x < 0) return VOID;
+    if ((ssize_t)state.map->height <= y || y < 0) return VOID;
+    return state.mapchars[x+y*(state.map->width+1)];
+}
+
+void next_level(void) {
+    char buf[20];
+    struct stat st;
+
+    snprintf(buf, sizeof buf, "data/map_%d.txt", ++state.level);
+    if (stat(buf, &st) == 0) {
+        state.state = s_normal;
+        load_map_from_file(buf);
+    } else state.state = s_win;;
 }
 
 /* This function is called TPS times a second
  * (this is a place where all game logic resides) */
-void tick(struct timespec time) {
-    (void)time;
-
-    tilemap_animation_tick(state.map);
-    
-    tile_t old_player = tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, NOTILE);
-    int dx = state.keys.right - state.keys.left;
-    int dy = state.keys.backward - state.keys.forward;
-
-    enum wall_type wt = get_wall_type(state.mapchars, state.map->width,
-                                      state.map->height, state.char_x + dx, state.char_y + dy);
-    enum wall_type wt1 = get_wall_type(state.mapchars, state.map->width,
-                                      state.map->height, state.char_x + dx, state.char_y);
-    enum wall_type wt2 = get_wall_type(state.mapchars, state.map->width,
-                                      state.map->height, state.char_x, state.char_y + dy);
-    if (wt == t_floor) {
-        state.char_x += dx;
-        state.char_y += dy;
-    } else if (wt1 == t_floor) {
-        state.char_x += dx;
-    } else if (wt2 == t_floor) {
-        state.char_y += dy;
+int64_t tick(struct timespec current) {
+    int64_t frame_delta = TIMEDIFF(state.last_frame, current);
+    if (frame_delta >= SEC/TPS + 10000LL) {
+        tilemap_animation_tick(state.map);
+        state.last_frame = current;
+        frame_delta = 0;
+        ctx.want_redraw = 1;
     }
 
-    tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, old_player);
+    int64_t logic_delta = TIMEDIFF(state.last_tick, current);
+    if ((logic_delta >= SEC/TPS + 10000LL || (ctx.tick_early && !state.ticked_early))) {
+        if (state.state == s_normal) {
+            tile_t old_player = tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, NOTILE);
 
-    ctx.want_redraw = 1;
+            int16_t dx = state.keys.right - state.keys.left;
+            int16_t dy = state.keys.backward - state.keys.forward;
+
+            // It's complicated to allow wall gliding
+            if (get_cell(state.char_x + dx, state.char_y + dy) != WALL) {
+                state.char_x += dx;
+                state.char_y += dy;
+            } else if (get_cell(state.char_x + dx, state.char_y) != WALL) {
+                state.char_x += dx;
+            } else if (get_cell(state.char_x, state.char_y + dy) != WALL) {
+                state.char_y += dy;
+            }
+
+            tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, old_player);
+
+            switch(get_cell(state.char_x, state.char_y)) {
+            case VOID:
+            case WALL:
+            case TRAP:
+                state.state = s_game_over;
+                break;
+            case EXIT:
+                next_level();
+            }
+
+            state.ticked_early = ctx.tick_early && logic_delta > 10000LL;
+            state.last_tick = current;
+            ctx.tick_early = 0;
+            ctx.want_redraw = 1;
+        }
+        logic_delta = 0;
+    }
+
+    return MAX(0, SEC/TPS - MAX(logic_delta, frame_delta));
 }
 
 /* This function is called on every key press */
 void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     xcb_keysym_t ksym = get_keysym(kc, st);
     switch (ksym) {
+    case XK_R: // Restart game
+        state.level = 0;
+        next_level();
+        break;
     case XK_w:
         ctx.tick_early = !state.keys.forward && pressed;
         state.keys.forward = pressed;
@@ -155,81 +207,81 @@ void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     }
 }
 
-tile_t decode_wall(char *a, int w, int h, int x, int y) {
-    enum wall_type bottom = get_wall_type(a, w, h, x, y + 1);
-    enum wall_type right = get_wall_type(a, w, h, x + 1, y);
-    enum wall_type left = get_wall_type(a, w, h, x - 1, y);
-    enum wall_type bottom_right = get_wall_type(a, w, h, x + 1, y + 1);
-    enum wall_type bottom_left = get_wall_type(a, w, h, x - 1, y + 1);
+tile_t decode_wall(int x, int y) {
+    char bottom = get_cell(x, y + 1);
+    char right = get_cell(x + 1, y);
+    char left = get_cell(x - 1, y);
+    char bottom_right = get_cell(x + 1, y + 1);
+    char bottom_left = get_cell(x - 1, y + 1);
 
     // Unfortunately tileset I use does not
     // contain all combinations of walls...
     // But lets try to get the best approximation
 
-    if (left == t_wall && bottom == t_wall && bottom_left == t_void)
+    if (left == WALL && bottom == WALL && bottom_left == VOID)
         return MKTILE(0, 5*10 + 3 + 2*(rand()&1));
-    if (right == t_wall && bottom == t_wall && bottom_right == t_void)
+    if (right == WALL && bottom == WALL && bottom_right == VOID)
         return MKTILE(0, 5*10 + 4*(rand()&1));
 
-    if (bottom == t_floor) return MKTILE(0, 1 + (rand()&3));
-    if (left == t_floor) return MKTILE(0, 5 + 10*(rand()&3));
-    if (right == t_floor) return MKTILE(0, 10*(rand()&3));
+    if (bottom != WALL && bottom != VOID) return MKTILE(0, 1 + (rand()&3));
+    if (left != WALL && left != VOID) return MKTILE(0, 5 + 10*(rand()&3));
+    if (right != WALL && right != VOID) return MKTILE(0, 10*(rand()&3));
 
-    if (bottom == t_void) {
-        if (left == t_void && right == t_wall) return MKTILE(0, 4*10 + 0);
-        else if (left == t_wall && right == t_void) return MKTILE(0, 4*10 + 5);
+    if (bottom == VOID) {
+        if (left == VOID && right == WALL) return MKTILE(0, 4*10 + 0);
+        else if (left == WALL && right == VOID) return MKTILE(0, 4*10 + 5);
         return MKTILE(0, 4*10 + 1 + (rand()&3));
     }
 
-    if (left == t_wall && right == t_void) return MKTILE(0, 5 + 10*(rand()&3));
-    if (left == t_void && right == t_wall) return MKTILE(0, 10*(rand()&3));
+    if (left == WALL && right == VOID) return MKTILE(0, 5 + 10*(rand()&3));
+    if (left == VOID && right == WALL) return MKTILE(0, 10*(rand()&3));
 
     return MKTILE(0, 6*10+9);
 }
 
-tile_t decode_floor(char *a, int w, int h, int x, int y) {
-    enum wall_type bottom = get_wall_type(a, w, h, x, y + 1);
-    enum wall_type right = get_wall_type(a, w, h, x + 1, y);
-    enum wall_type left = get_wall_type(a, w, h, x - 1, y);
-    enum wall_type top = get_wall_type(a, w, h, x, y - 1);
+tile_t decode_floor(int x, int y) {
+    char bottom = get_cell(x, y + 1);
+    char right = get_cell(x + 1, y);
+    char left = get_cell(x - 1, y);
+    char top = get_cell(x, y - 1);
 
-    if (top == t_wall) {
-        if (left == t_wall && right != t_wall)
+    if (top == WALL) {
+        if (left == WALL && right != WALL)
             return MKTILE(0, 1*10+1);
-        if (left != t_wall && right == t_wall)
+        if (left != WALL && right == WALL)
             return MKTILE(0, 1*10+4);
         return MKTILE(0, 1*10 + 2+(rand() & 1));
     }
 
-    if (bottom == t_wall) {
-        if (left == t_wall && right != t_wall)
+    if (bottom == WALL) {
+        if (left == WALL && right != WALL)
             return MKTILE(0, 3*10+1);
-        if (left != t_wall && right == t_wall)
+        if (left != WALL && right == WALL)
             return MKTILE(0, 3*10+4);
         return MKTILE(0, 3*10 + 2+(rand() & 1));
     }
 
-    if (left == t_wall) return MKTILE(0, 2*10 + 1);
-    if (right == t_wall) return MKTILE(0, 2*10 + 4);
+    if (left == WALL) return MKTILE(0, 2*10 + 1);
+    if (right == WALL) return MKTILE(0, 2*10 + 4);
 
     return MKTILE(0, (rand() % 3)*10 + (rand() & 3) + 6);
 }
 
 
-struct tilemap *create_tilemap_from_tile(const char *file) {
+void load_map_from_file(const char *file) {
     srand(123);
 
     int fd = open(file, O_RDONLY);
     if (fd < 0) {
         warn("Can't open tile map '%s': %s", file, strerror(errno));
-        return NULL;
+        return;
     }
 
     struct stat statbuf;
     if (fstat(fd, &statbuf) < 0) {
         warn("Can't stat tile map '%s': %s", file, strerror(errno));
         close(fd);
-        return NULL;
+        return;
     }
 
     // +1 to make file contents NULL-terminated
@@ -238,11 +290,14 @@ struct tilemap *create_tilemap_from_tile(const char *file) {
 
     if (addr == MAP_FAILED) {
         warn("Can't mmap tile map '%s': %s", file, strerror(errno));
-        return NULL;
+        return;
     }
 
-    size_t width = 0, height = 0;
+    if (state.mapchars) munmap(state.mapchars, state.mapchars_size);
+    state.mapchars = addr;
+    state.mapchars_size = statbuf.st_size + 1;
 
+    size_t width = 0, height = 0;
     char *nel = addr;
     do {
         char *newnel = strchr(nel, '\n');
@@ -263,51 +318,47 @@ struct tilemap *create_tilemap_from_tile(const char *file) {
 format_error:
         warn("Wrong tile tile map '%s' format", file);
         munmap(addr, statbuf.st_size + 1);
-        return NULL;
+        return;
     }
-    struct tilemap *map = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
+
+    if (state.map) free_tilemap(state.map);
+    state.map = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
+    tilemap_set_scale(state.map, ctx.scale);
 
     int16_t x = 0, y = 0;
     for (char *ptr = addr, c; (c = *ptr); ptr++) {
         switch(c) {
-        case '#': /* wall */;
-            tilemap_set_tile(map, x, y, 0, decode_wall(addr, width, height, x, y));
+        case WALL: /* wall */;
+            tilemap_set_tile(state.map, x, y, 0, decode_wall(x, y));
             x++;
             break;
-        case ' ': /* void */
-            tilemap_set_tile(map, x++, y, 0, TILE_VOID);
+        case VOID: /* void */
+            tilemap_set_tile(state.map, x++, y, 0, TILE_VOID);
             break;
         case '@': /* player start */
             state.char_x = x, state.char_y = y;
-            tilemap_set_tile(map, x, y, ENT_LAYER, TILE_PLAYER);
-            tilemap_set_tile(map, x, y, 0, decode_floor(addr, width, height, x, y));
-            x++;
+            tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
+            tilemap_set_tile(state.map, x++, y, ENT_LAYER, TILE_PLAYER);
             break;
-        case 'T': /* trap */
-            tilemap_set_tile(map, x++, y, 1, TILE_TRAP);
+        case TRAP: /* trap */
+            tilemap_set_tile(state.map, x++, y, 1, TILE_TRAP);
             break;
         case 'x': /* exit */
-            tilemap_set_tile(map, x, y, 1, TILE_EXIT);
+            tilemap_set_tile(state.map, x, y, 1, TILE_EXIT);
             // fallthrough
         case '.': /* floor */
-            tilemap_set_tile(map, x, y, 0, decode_floor(addr, width, height, x, y));
+            tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
             x++;
             break;
         case '\n': /* new line */
             x = 0, y++;
             break;
         default:
-            free_tilemap(map);
+            free_tilemap(state.map);
+            state.map = NULL;
             goto format_error;
         }
     }
-
-    if (state.mapchars)
-        munmap(state.mapchars, state.mapchars_size);
-
-    state.mapchars = addr;
-    state.mapchars_size = statbuf.st_size + 1;
-    return map;
 }
 
 void init(void) {
@@ -348,8 +399,7 @@ void init(void) {
         state.tilesets[i] = create_tileset(tileset_descs[i].path, tiles, tile_id);
     }
 
-    state.map = create_tilemap_from_tile("data/map_1.txt");
-    tilemap_set_scale(state.map, ctx.scale);
+    next_level();
 }
 
 void cleanup(void) {

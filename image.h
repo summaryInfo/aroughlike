@@ -80,6 +80,7 @@ inline static color_t image_sample(struct image src, double x, double y, enum sa
 void image_draw_rect(struct image im, struct rect rect, color_t fg);
 void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode);
 struct image create_image(const char *file);
+struct image create_empty_image(int16_t width, int16_t height);
 struct image create_shm_image(int16_t width, int16_t height);
 void free_image(struct image *backbuf);
 

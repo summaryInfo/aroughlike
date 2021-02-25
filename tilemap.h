@@ -32,12 +32,14 @@ struct tileset {
 };
 
 struct tilemap {
+    struct image cbuf;
     size_t nsets;
     struct tileset **sets;
     size_t width;
     size_t height;
     int16_t tile_width;
     int16_t tile_height;
+    double scale;
     tile_t tiles[];
 };
 

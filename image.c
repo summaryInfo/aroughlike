@@ -26,6 +26,12 @@
 #include "stb_image.h"
 #pragma GCC diagnostic pop
 
+struct image create_empty_image(int16_t width, int16_t height) {
+    color_t *restrict data = aligned_alloc(CACHE_LINE, width*height*sizeof(color_t));
+    memset(data, 0, width*height*sizeof(color_t));
+    return (struct image) { .width = width, .height = height, .shmid = -1, .data = data };
+}
+
 struct image create_image(const char *file) {
     int x, y, n;
     color_t *image = (void *)stbi_load(file, &x, &y, &n, sizeof(color_t));
