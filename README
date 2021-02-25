@@ -14,13 +14,25 @@ They can be installed:
  * On Void Linux: `xbps-install -S libxcb-devel`
 
 It also requires GNU or BSD make and GCC compiler
+Blending code requires SSE4.1
+
+## In-game controls
+
+ * `w` -- move forward
+ * `a` -- move left
+ * `s` -- move backward
+ * `d` -- move right
+ * `R` -- reset game
+ * `ESC` -- exit game
+ * `+`/`=` -- zoom-in
+ * `-` -- zoom-out
 
 ## Building and running 
 
 This program can be run with
 
-    make run
+    make run -j
 
 To compile a program you just need to
 
-    make
+    make -j
