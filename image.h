@@ -22,14 +22,24 @@ enum sampler_mode {
     sample_linear = 1,
 };
 
+__attribute__((always_inline))
 inline static uint8_t color_r(color_t c) { return (c >> 16) & 0xFF; }
+
+__attribute__((always_inline))
 inline static uint8_t color_g(color_t c) { return (c >> 8) & 0xFF; }
+
+__attribute__((always_inline))
 inline static uint8_t color_b(color_t c) { return c & 0xFF; }
+
+__attribute__((always_inline))
 inline static uint8_t color_a(color_t c) { return c >> 24; }
+
+__attribute__((always_inline))
 inline static color_t mk_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
     return ((color_t)a << 24U) | (r << 16U) | (g << 8U) | b;
 }
 
+__attribute__((always_inline))
 inline static color_t color_blend(color_t dstc, color_t srcc) {
     double alpha = 1 - color_a(srcc)/255.;
 
@@ -40,6 +50,7 @@ inline static color_t color_blend(color_t dstc, color_t srcc) {
             color_a(dstc)*alpha + color_a(srcc));
 }
 
+__attribute__((always_inline))
 inline static color_t color_mix(color_t dstc, color_t srcc, double alpha) {
     return mk_color(
             color_r(dstc)*(1. - alpha) + color_r(srcc)*alpha,
@@ -48,6 +59,7 @@ inline static color_t color_mix(color_t dstc, color_t srcc, double alpha) {
             color_a(dstc)*(1. - alpha) + color_a(srcc)*alpha);
 }
 
+__attribute__((always_inline))
 inline static color_t image_sample(struct image src, double x, double y, enum sampler_mode mode) {
     // Always clamp to border
     x = MAX(0, x), y = MAX(0, y);
