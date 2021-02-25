@@ -109,6 +109,7 @@ void next_level(void) {
 
     snprintf(buf, sizeof buf, "data/map_%d.txt", ++state.level);
     if (stat(buf, &st) == 0) {
+        state.keys = (struct input_state) {0};
         state.state = s_normal;
         load_map_from_file(buf);
     } else state.state = s_win;;
