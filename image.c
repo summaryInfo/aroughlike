@@ -23,6 +23,7 @@
  * warnings just for this header */
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #pragma GCC diagnostic ignored "-Wduplicated-branches"
+#pragma GCC diagnostic ignored "-Wsign-compare"
 #include "stb_image.h"
 #pragma GCC diagnostic pop
 
@@ -153,11 +154,11 @@ inline static __m128i blend4(__m128i under, __m128i over) {
     const __m128  m255 = (__m128)_mm_setr_epi32(0xFF00FF00, 0xFF00FF00, 0xFF00FF00, 0xFF00FF00);
 
     __m128i u16_0 = _mm_cvtepu8_epi16(under);
-    __m128i u16_1 = _mm_unpackhi_epi8(under,zero);
-    __m128i al8_0 = _mm_shuffle_epi8 (over,allo);
-    __m128i al8_1 = _mm_shuffle_epi8 (over,alhi);
-    __m128i mal_0 = (__m128i)_mm_xor_ps(m255,(__m128)al8_0);
-    __m128i mal_1 = (__m128i)_mm_xor_ps(m255,(__m128)al8_1);
+    __m128i u16_1 = _mm_unpackhi_epi8(under, zero);
+    __m128i al8_0 = _mm_shuffle_epi8 (over, allo);
+    __m128i al8_1 = _mm_shuffle_epi8 (over, alhi);
+    __m128i mal_0 = (__m128i)_mm_xor_ps(m255, (__m128)al8_0);
+    __m128i mal_1 = (__m128i)_mm_xor_ps(m255, (__m128)al8_1);
     __m128i mul_0 = _mm_mulhi_epu16(u16_0, mal_0);
     __m128i mul_1 = _mm_mulhi_epu16(u16_1, mal_1);
     __m128i pixel = _mm_packus_epi16(mul_0, mul_1);
