@@ -23,7 +23,6 @@
  * warnings just for this header */
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #pragma GCC diagnostic ignored "-Wduplicated-branches"
-#pragma GCC diagnostic ignored "-Wsign-compare"
 #include "stb_image.h"
 #pragma GCC diagnostic pop
 
@@ -179,7 +178,8 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
 
     if (drect.width > 0 && drect.height > 0) {
         if (fastpath) {
-            if (!(drect.x & 3) && !(drect.width & 3) && !(srect.x & 3) && !(srect.width & 3)) {
+            if (!(MAX(0, drect.x) & 3) && !(dst.width & 3) &&
+                !(MAX(0, srect.x) & 3) && !(src.width & 3)) {
                 /* Fast path for aligned non-resizing blits */
                 for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
                     for (size_t i = MAX(-drect.x, 0); i < (size_t)(drect.width & ~3); i += 4) {
@@ -198,18 +198,18 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                         _mm_storeu_si128(ptr, blend4(d, s));
                     }
                 }
-                for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
-                    for (size_t i = (size_t)(drect.width & ~3); i < (size_t)drect.width; i ++) {
-                        color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
-                        color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
-                        *pdstc = color_blend(*pdstc, srcc);
-                    }
+            }
+            for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
+                for (size_t i = (size_t)(drect.width & ~3); i < (size_t)drect.width; i ++) {
+                    color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
+                    color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
+                    *pdstc = color_blend(*pdstc, srcc);
                 }
             }
         } else {
             // Separate branches for better inlining...
             if (mode == sample_nearest) {
-                if (!(drect.x & 3) && !(drect.width & 3)) {
+                if (!(MAX(0, drect.x) & 3) && !(dst.width & 3)) {
                     for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
                         for (size_t i = MAX(-drect.x, 0); i < (size_t)drect.width; i += 4) {
                             void *ptr = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
@@ -235,12 +235,12 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                             _mm_storeu_si128(ptr, blend4(d, s));
                         }
                     }
-                    for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
-                        for (size_t i = (size_t)(drect.width & ~3); i < (size_t)drect.width; i++) {
-                            color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
-                            color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
-                            *pdstc = color_blend(*pdstc, srcc);
-                        }
+                }
+                for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
+                    for (size_t i = (size_t)(drect.width & ~3); i < (size_t)drect.width; i++) {
+                        color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
+                        color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
+                        *pdstc = color_blend(*pdstc, srcc);
                     }
                 }
             } else {
