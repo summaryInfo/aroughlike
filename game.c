@@ -85,7 +85,7 @@ void redraw(int64_t delta) {
 
     if (state.state == s_win) /* Draw win screen */ {
         image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
-                        ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFF0000FF);
+                        ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFF00FF00);
     } else if (state.state == s_game_over) /* Draw game over message */ {
         image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
                         ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFFFF0000);
