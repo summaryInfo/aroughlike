@@ -184,7 +184,7 @@ tile_t decode_wall(char *a, int w, int h, int x, int y) {
     if (left == t_wall && right == t_void) return MKTILE(0, 5 + 10*(rand()&3));
     if (left == t_void && right == t_wall) return MKTILE(0, 10*(rand()&3));
 
-    return MKTILE(0, 7*10+9);
+    return MKTILE(0, 6*10+9);
 }
 
 tile_t decode_floor(char *a, int w, int h, int x, int y) {
