@@ -375,18 +375,20 @@ static void run(void) {
 
         int64_t delta_draw = TIMEDIFF(ctx.last_draw, cur);
         int64_t next_draw = (SEC / FPS) - delta_draw;
-        if (((next_draw <= 10000LL && ctx.want_redraw) || ctx.force_redraw) && ctx.active) {
-            redraw(delta_draw);
-            renderer_update((struct rect){0,0,ctx.backbuf.width,ctx.backbuf.height});
+        if ((next_draw <= 10000LL || ctx.force_redraw) && ctx.active) {
+            if (ctx.want_redraw || ctx.force_redraw) {
+                redraw(delta_draw);
+                renderer_update((struct rect){0,0,ctx.backbuf.width,ctx.backbuf.height});
+                ctx.want_redraw = 0;
+                ctx.force_redraw = 0;
+            }
             next_draw = (SEC / FPS);
             ctx.last_draw = cur;
-            ctx.want_redraw = 0;
-            ctx.force_redraw = 0;
         }
 
         // Poll timeout is calculated from timeout to next redraw/game tick
 
-        next_timeout = ctx.active ? MIN(next_tick, next_timeout) : next_tick;
+        next_timeout = ctx.active ? MIN(next_tick, MAX(next_draw, 0)) : next_tick;
         xcb_flush(ctx.con);
     }
 
