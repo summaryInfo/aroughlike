@@ -138,9 +138,27 @@ void free_image(struct image *backbuf) {
 void image_draw_rect(struct image im, struct rect rect, color_t fg) {
     color_t *data = __builtin_assume_aligned(im.data, CACHE_LINE);
     if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
-        for (size_t j = 0; j < (size_t)rect.height; j++) {
-            for (size_t i = 0; i < (size_t)rect.width; i++) {
-                data[(rect.y + j) * im.width + (rect.x + i)] = fg;
+        __m128i val = _mm_set1_epi32(fg);
+        if (!(MAX(0, rect.x) & 3) && !(im.width & 3)) {
+            for (size_t j = 0; j < (size_t)rect.height; j++) {
+                for (size_t i = 0; i < (size_t)(rect.width & ~3); i += 4) {
+                    void *ptr = &data[(rect.y + j) * im.width + (rect.x + i)];
+                    _mm_store_si128(ptr, val);
+                }
+            }
+        } else {
+            for (size_t j = 0; j < (size_t)rect.height; j++) {
+                for (size_t i = 0; i < (size_t)(rect.width & ~3); i += 4) {
+                    void *ptr = &data[(rect.y + j) * im.width + (rect.x + i)];
+                    _mm_storeu_si128(ptr, val);
+                }
+            }
+        }
+        if (rect.width & 3) {
+            for (size_t j = 0; j < (size_t)rect.height; j++) {
+                for (size_t i = (size_t)(rect.width & ~3); i < (size_t)rect.width; i++) {
+                    data[(rect.y + j) * im.width + (rect.x + i)] = fg;
+                }
             }
         }
     }
@@ -187,7 +205,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                         void *ptr = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
                         const __m128i d = _mm_load_si128((const void *)ptr);
                         const __m128i s = _mm_load_si128((const void *)&sdata[(srect.y + j) * src.width + (srect.x + i)]);
-                        _mm_storeu_si128(ptr, blend4(d, s));
+                        _mm_store_si128(ptr, blend4(d, s));
                     }
                 }
             } else {
@@ -200,11 +218,13 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                     }
                 }
             }
-            for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
-                for (size_t i = (size_t)(drect.width & ~3); i < (size_t)drect.width; i ++) {
-                    color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
-                    color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
-                    *pdstc = color_blend(*pdstc, srcc);
+            if (drect.width & 3) {
+                for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
+                    for (size_t i = (size_t)(drect.width & ~3); i < (size_t)drect.width; i ++) {
+                        color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
+                        color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
+                        *pdstc = color_blend(*pdstc, srcc);
+                    }
                 }
             }
         } else {
@@ -220,7 +240,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                                 image_sample(src, srect.x + (i + 2)*xscale, srect.y + j*yscale, sample_nearest),
                                 image_sample(src, srect.x + (i + 1)*xscale, srect.y + j*yscale, sample_nearest),
                                 image_sample(src, srect.x + (i + 0)*xscale, srect.y + j*yscale, sample_nearest));
-                            _mm_storeu_si128(ptr, blend4(d, s));
+                            _mm_store_si128(ptr, blend4(d, s));
                         }
                     }
                 } else {
@@ -237,11 +257,13 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                         }
                     }
                 }
-                for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
-                    for (size_t i = (size_t)(drect.width & ~3); i < (size_t)drect.width; i++) {
-                        color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
-                        color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
-                        *pdstc = color_blend(*pdstc, srcc);
+                if (drect.width & 3) {
+                    for (size_t j = MAX(-drect.y, 0); j < (size_t)drect.height; j++) {
+                        for (size_t i = (size_t)(drect.width & ~3); i < (size_t)drect.width; i++) {
+                            color_t srcc = image_sample(src, srect.x + i*xscale, srect.y + j*yscale, sample_nearest);
+                            color_t *pdstc = &ddata[(drect.y + j) * dst.width + (drect.x + i)];
+                            *pdstc = color_blend(*pdstc, srcc);
+                        }
                     }
                 }
             } else {
