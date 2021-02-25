@@ -54,7 +54,7 @@ static void renderer_update(struct rect rect) {
      *     - MIT-SHM shared pixmap
      *     - MIT-SHM shared buffer
      *     - Core X11 PutImage request
-     * 
+     *
      * Double buffering in X11 is weird, so
      * like everyone normally do, we just draw to
      * one pixmap and then copy that pixmap
@@ -295,8 +295,9 @@ static void run(void) {
             die("Poll error: %s", strerror(errno));
 
         if (pfd.revents & POLLIN) {
-            for (xcb_generic_event_t *event; (event = xcb_poll_for_event(ctx.con)); free(event)) {
-                switch (event->response_type &= 0x7f) {
+            for (xcb_generic_event_t *event, *nextev = NULL; nextev || (event = xcb_poll_for_event(ctx.con)); free(event)) {
+                if (nextev) event = nextev, nextev = NULL;
+                switch (event->response_type &= 0x7F) {
                 case XCB_EXPOSE:{
                     ctx.force_redraw = 1;
                     break;
@@ -311,14 +312,23 @@ static void run(void) {
                     }
                     break;
                 }
-                case XCB_KEY_PRESS:
-                case XCB_KEY_RELEASE: {
+                case XCB_KEY_RELEASE:
+                    /* Skip key repeats */
+                    if ((nextev = xcb_poll_for_queued_event(ctx.con)) &&
+                            (nextev->response_type &= 0x7F) == XCB_KEY_PRESS &&
+                            event->full_sequence == nextev->full_sequence) {
+                        free(nextev);
+                        nextev = NULL;
+                        continue;
+                    }
+                    // fallthrough
+                case XCB_KEY_PRESS: {
                     xcb_key_release_event_t *ev = (xcb_key_release_event_t*)event;
                     handle_key(ev->detail, ev->state, ev->response_type == XCB_KEY_PRESS);
                     break;
                 }
                 case XCB_FOCUS_IN:
-                case XCB_FOCUS_OUT:{
+                case XCB_FOCUS_OUT: {
                     ctx.focused = event->response_type == XCB_FOCUS_IN;
                     break;
                 }
@@ -403,7 +413,7 @@ int main(int argc, char **argv) {
     init();
 
     run();
-    
+
     cleanup();
     free_context();
 

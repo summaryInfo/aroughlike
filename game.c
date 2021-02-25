@@ -123,20 +123,20 @@ void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     xcb_keysym_t ksym = get_keysym(kc, st);
     switch (ksym) {
     case XK_w:
-        state.keys.forward = pressed;
         ctx.tick_early = !state.keys.forward && pressed;
+        state.keys.forward = pressed;
         break;
     case XK_s:
-        state.keys.backward = pressed;
         ctx.tick_early = !state.keys.backward && pressed;
+        state.keys.backward = pressed;
         break;
     case XK_a:
-        state.keys.left = pressed;
         ctx.tick_early = !state.keys.left && pressed;
+        state.keys.left = pressed;
         break;
     case XK_d:
-        state.keys.right = pressed;
         ctx.tick_early = !state.keys.right && pressed;
+        state.keys.right = pressed;
         break;
     case XK_minus:
         ctx.scale = MAX(1, ctx.scale - pressed);
