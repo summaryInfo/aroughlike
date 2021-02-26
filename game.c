@@ -34,7 +34,6 @@
 
 #define TILE_VOID MKTILE(TILESET_STATIC, 10*7+8)
 #define TILE_FLOOR MKTILE(TILESET_STATIC, 10*0+6)
-#define TILE_PLAYER MKTILE(TILESET_ENTITIES, 0*4+0)
 #define TILE_TRAP MKTILE(TILESET_ANIMATED, 24*4+2)
 #define TILE_EXIT MKTILE(TILESET_STATIC, 10*3+9)
 #define TILE_POISON MKTILE(TILESET_ANIMATED, 4*17+ 3)
@@ -240,16 +239,22 @@ int64_t tick(struct timespec current) {
     return MAX(0, MIN(10*SEC/TPS - logic_delta, SEC/TPS - frame_delta));
 }
 
+void reset_game(void) {
+    state.level = 0;
+    state.player.lives = 1;
+    next_level();
+
+    // Select random player model
+    int r = rand() % 7;
+    state.player.tile = MKTILE(TILESET_ENTITIES, 4*(2*r+(r>2)) + 3);
+}
+
 /* This function is called on every key press */
 void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     xcb_keysym_t ksym = get_keysym(kc, st);
     switch (ksym) {
     case XK_R: // Restart game
-        if (pressed) {
-            state.level = 0;
-            state.player.lives = 1;
-            next_level();
-        }
+        if (pressed) reset_game();
         break;
     case XK_w:
         ctx.tick_early = !state.keys.forward && pressed;
@@ -370,8 +375,6 @@ tile_t decode_floor(int x, int y) {
 
 
 void load_map_from_file(const char *file) {
-    srand(123);
-
     int fd = open(file, O_RDONLY);
     if (fd < 0) {
         warn("Can't open tile map '%s': %s", file, strerror(errno));
@@ -524,11 +527,8 @@ void init(void) {
         submit_work(do_load, descs + i, sizeof *descs);
     }
 
-    state.player.tile = TILE_PLAYER;
-    state.player.lives = 1;
-
     drain_work();
-    next_level();
+    reset_game();
 }
 
 void cleanup(void) {
