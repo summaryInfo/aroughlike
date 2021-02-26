@@ -196,17 +196,21 @@ int64_t tick(struct timespec current) {
     if ((logic_delta >= 10*SEC/TPS - 10000LL || (ctx.tick_early && !state.ticked_early))) {
         state.ticked_early = ctx.tick_early && logic_delta > 10000LL;
         if (state.state == s_normal) {
+
+            // Update traps
+            tilemap_random_tick(state.map);
+
             int16_t dx = state.keys.right - state.keys.left;
             int16_t dy = state.keys.backward - state.keys.forward;
 
             // It's complicated to allow wall gliding
-            if (get_cell(state.player.x + state.player.dx, state.player.y + state.player.dy) != WALL) {
+            if (get_cell(state.player.x + dx, state.player.y + dy) != WALL) {
                 state.player.x += dx;
                 state.player.y += dy;
-            } else if (get_cell(state.player.x + state.player.dx, state.player.y) != WALL) {
+            } else if (get_cell(state.player.x + dx, state.player.y) != WALL) {
                 state.player.x += dx;
                 dy = 0;
-            } else if (get_cell(state.player.x, state.player.y + state.player.dy) != WALL) {
+            } else if (get_cell(state.player.x, state.player.y + dy) != WALL) {
                 state.player.y += dy;
                 dx = 0;
             }
@@ -228,7 +232,8 @@ int64_t tick(struct timespec current) {
                 state.state = s_game_over;
                 break;
             case TRAP:
-                if (tilemap_get_tile(state.map, state.player.x, state.player.y, 1) != TILE_TRAP && !--state.player.lives) {
+                if (tilemap_get_tile(state.map, state.player.x,
+                        state.player.y, 0) != TILE_TRAP && !--state.player.lives) {
                     state.state = s_game_over;
                 }
                 break;
@@ -243,6 +248,7 @@ int64_t tick(struct timespec current) {
 
             ctx.want_redraw = 1;
         }
+
         state.last_tick = current;
         ctx.tick_early = 0;
         logic_delta = 0;
@@ -458,7 +464,7 @@ format_error:
             x++;
             break;
         case TRAP: /* trap */
-            tilemap_set_tile(state.map, x++, y, 1, TILE_TRAP);
+            tilemap_set_tile(state.map, x++, y, 0, TILE_TRAP);
             break;
         case POISON: /* poison */
             tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));

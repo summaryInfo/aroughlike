@@ -160,11 +160,6 @@ void tilemap_animation_tick(struct tilemap *map) {
                 tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, zi);
                 if (tileid == NOTILE) continue;
                 struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
-
-                // Thats a hack to make traps work less
-                // frequently
-                if (tileid == TILE_TRAP && rand() % 17 != 1) continue;
-
                 tilemap_set_tile_unsafe(map, xi, yi, zi, MKTILE(TILESET_ID(tileid), tile->next_frame));
                 renew |= tileid != tile->next_frame;
             }
@@ -175,6 +170,29 @@ void tilemap_animation_tick(struct tilemap *map) {
                     tileset_draw_tile(map->cbuf, map->sets[TILESET_ID(tile)],
                                       TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
                 }
+            }
+        }
+    }
+}
+
+void tilemap_random_tick(struct tilemap *map) {
+    for (size_t yi = 0; yi < map->height; yi++) {
+        for (size_t xi = 0; xi < map->width; xi++) {
+            tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, 0);
+            if ((tileid & ~3) != (TILE_TRAP & ~3)) continue;
+
+            // Thats a hack to make traps work less
+            // frequently
+            if (tileid == TILE_TRAP && rand() % 17 != 1) continue;
+
+            struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
+            tilemap_set_tile_unsafe(map, xi, yi, 0, MKTILE(TILESET_ID(tileid), tile->next_frame));
+
+            for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
+                tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
+                if (tile == NOTILE) continue;
+                tileset_draw_tile(map->cbuf, map->sets[TILESET_ID(tile)],
+                                  TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
             }
         }
     }
