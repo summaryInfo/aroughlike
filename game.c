@@ -5,6 +5,7 @@
 #include "context.h"
 #include "image.h"
 #include "tilemap.h"
+#include "worker.h"
 
 #include <assert.h>
 #include <errno.h>
@@ -58,6 +59,7 @@ struct gamestate {
     struct timespec last_frame;
     /* Only one early tick is allowed */
     bool ticked_early;
+    int32_t frame_n;
 
     struct input_state {
         bool forward : 1;
@@ -120,14 +122,33 @@ void next_level(void) {
 int64_t tick(struct timespec current) {
     int64_t frame_delta = TIMEDIFF(state.last_frame, current);
     if (frame_delta >= SEC/TPS + 10000LL) {
-        tilemap_animation_tick(state.map);
+        state.frame_n = (state.frame_n + 1) % TPS;
+        if (state.frame_n % 10 == 0)
+            tilemap_animation_tick(state.map);
+
+        // Move camera towards player
+
+        double x_speed_scale = MIN(ctx.backbuf.width/5, 512)/ctx.scale;
+        double y_speed_scale = MIN(ctx.backbuf.height/5, 512)/ctx.scale;
+        int32_t cam_dx = -pow((state.camera_x + (state.char_x*TILE_WIDTH + TILE_WIDTH/2)*state.map->scale -
+                               ctx.backbuf.width/2)/x_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
+        int32_t cam_dy = -pow((state.camera_y + (state.char_y*TILE_HEIGHT + TILE_HEIGHT/2)*state.map->scale -
+                               ctx.backbuf.height/2)/y_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
+        state.camera_x += cam_dx;
+        state.camera_y += cam_dy;
         state.last_frame = current;
         frame_delta = 0;
-        ctx.want_redraw = 1;
+
+        if (state.frame_n % 10 == 0 ||
+            cam_dx || cam_dy) {
+            ctx.want_redraw = 1;
+        }
     }
 
+
+
     int64_t logic_delta = TIMEDIFF(state.last_tick, current);
-    if ((logic_delta >= SEC/TPS + 10000LL || (ctx.tick_early && !state.ticked_early))) {
+    if ((logic_delta >= 10*SEC/TPS + 10000LL || (ctx.tick_early && !state.ticked_early))) {
         if (state.state == s_normal) {
             tile_t old_player = tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, NOTILE);
 
@@ -164,7 +185,7 @@ int64_t tick(struct timespec current) {
         logic_delta = 0;
     }
 
-    return MAX(0, SEC/TPS - MAX(logic_delta, frame_delta));
+    return MAX(0, MIN(10*SEC/TPS - logic_delta, SEC/TPS - frame_delta));
 }
 
 /* This function is called on every key press */
@@ -362,49 +383,62 @@ format_error:
     }
 }
 
+struct tileset_desc {
+    const char *path;
+    size_t x, y;
+    bool animated;
+    size_t i;
+};
+
+void do_load(void *varg) {
+    struct tileset_desc *arg = varg;
+
+    struct tile *tiles = calloc(arg->x*arg->y, sizeof(*tiles));
+    tile_t tile_id = 0;
+    for (size_t y = 0; y < arg->y; y++) {
+        for (size_t x = 0; x < arg->x; x++) {
+            tiles[tile_id] = (struct tile) {
+                .pos = (struct rect){
+                    x*TILE_WIDTH,
+                    y*TILE_HEIGHT,
+                    TILE_WIDTH,
+                    TILE_HEIGHT
+                },
+                .origin_x = 0,
+                .origin_y = 0,
+                /* In animated tileset_descs one row of tileset
+                 * is one animation, and the width of tileset
+                 * is the number of frames of animation */
+                .next_frame = arg->animated ?
+                        y*arg->x + (x + 1) % arg->x :
+                        tile_id,
+            };
+            tile_id++;
+        }
+    }
+    state.tilesets[arg->i] = create_tileset(arg->path, tiles, tile_id);
+
+}
+
 void init(void) {
-    struct {
-        const char *path;
-        size_t x, y;
-        bool animated;
-    } tileset_descs[NTILESETS] = {
-        {"data/tiles.png", 10, 10, 0},
-        {"data/ani.png", 4, 26, 1},
-        {"data/ent.png", 4, 14, 1},
+    struct tileset_desc descs[NTILESETS] = {
+        {"data/tiles.png", 10, 10, 0, 0},
+        {"data/ani.png", 4, 26, 1, 1},
+        {"data/ent.png", 4, 14, 1, 2},
     };
 
-    for (size_t i = 0; i < sizeof(tileset_descs)/sizeof(*tileset_descs); i++) {
-        struct tile *tiles = calloc(tileset_descs[i].x*tileset_descs[i].y, sizeof(*tiles));
-        tile_t tile_id = 0;
-        for (size_t y = 0; y < tileset_descs[i].y; y++) {
-            for (size_t x = 0; x < tileset_descs[i].x; x++) {
-                tiles[tile_id] = (struct tile) {
-                    .pos = (struct rect){
-                        x*TILE_WIDTH,
-                        y*TILE_HEIGHT,
-                        TILE_WIDTH,
-                        TILE_HEIGHT
-                    },
-                    .origin_x = 0,
-                    .origin_y = 0,
-                    /* In animated tileset_descs one row of tileset
-                     * is one animation, and the width of tileset
-                     * is the number of frames of animation */
-                    .next_frame = tileset_descs[i].animated ?
-                            y*tileset_descs[i].x + (x + 1) % tileset_descs[i].x :
-                            tile_id,
-                };
-                tile_id++;
-            }
-        }
-        state.tilesets[i] = create_tileset(tileset_descs[i].path, tiles, tile_id);
+    for (size_t i = 0; i < NTILESETS; i++) {
+        submit_work(do_load, descs + i, sizeof *descs);
     }
 
+    drain_work();
     next_level();
 }
 
 void cleanup(void) {
     free_tilemap(state.map);
     munmap(state.mapchars, state.mapchars_size);
-    for (size_t i = 0; i < NTILESETS; i++) unref_tileset(state.tilesets[i]);
+    for (size_t i = 0; i < NTILESETS; i++) {
+        unref_tileset(state.tilesets[i]);
+    }
 }
