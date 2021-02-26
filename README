@@ -38,3 +38,9 @@ This program can be run with
 To compile a program you just need to
 
     make -j
+
+
+## Thanks
+
+Thanks to stb image libraries authors.
+Tileset used was downloaded [here](https://pixel-poem.itch.io/dungeon-assetpuck)
