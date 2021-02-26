@@ -81,9 +81,6 @@ struct gamestate {
 
 void load_map_from_file(const char *file);
 
-#define ENT_LAYER 2
-
-
 /* This is main drawing function, that is called
  * FPS times a second */
 void redraw(struct timespec current) {

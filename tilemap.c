@@ -71,7 +71,7 @@ struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, 
     assert(tile_width > 0);
     assert(tile_height > 0);
 
-    struct tilemap *map = malloc(sizeof(*map) + width*height*TILES_PER_CELL*sizeof(tile_t));
+    struct tilemap *map = malloc(sizeof(*map) + width*height*TILEMAP_LAYERS*sizeof(tile_t));
     assert(map);
 
     if (nsets) {
@@ -91,7 +91,7 @@ struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, 
     map->cbuf = create_empty_image(width*tile_width, height*tile_height);
 
     /* Set every tile to NOTILE */
-    memset(map->tiles, 0xFF, width*height*TILES_PER_CELL*sizeof(tile_t));
+    memset(map->tiles, 0xFF, width*height*TILEMAP_LAYERS*sizeof(tile_t));
 
     return map;
 }
@@ -116,7 +116,7 @@ tile_t tilemap_add_tileset(struct tilemap *map, struct tileset *newset) {
 tile_t tilemap_get_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer) {
     assert(x >= 0 && x < (ssize_t)map->width);
     assert(y >= 0 && y < (ssize_t)map->height);
-    assert(layer >= 0 && layer < TILES_PER_CELL);
+    assert(layer >= 0 && layer < TILEMAP_LAYERS);
     return tilemap_get_tile_unsafe(map, x, y, layer);
 }
 
@@ -128,7 +128,7 @@ void tilemap_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y) {
 tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
     assert(x >= 0 && x < (ssize_t)map->width);
     assert(y >= 0 && y < (ssize_t)map->height);
-    assert(layer >= 0 && layer < TILES_PER_CELL);
+    assert(layer >= 0 && layer < TILEMAP_LAYERS);
     if (tile != NOTILE) {
         assert(TILESET_ID(tile) < map->nsets);
         assert(TILE_ID(tile) < map->sets[TILESET_ID(tile)]->ntiles);
@@ -136,7 +136,7 @@ tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer
 
     tile_t old = tilemap_set_tile_unsafe(map, x, y, layer, tile);
 
-    for (size_t i = 0; i < TILES_PER_CELL; i++) {
+    for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
         tile_t tilei = tilemap_get_tile_unsafe(map, x, y, i);
         if (tilei == NOTILE) continue;
         tileset_draw_tile(map->cbuf, map->sets[TILESET_ID(tilei)],
@@ -154,7 +154,7 @@ void tilemap_animation_tick(struct tilemap *map) {
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
             bool renew = 0;
-            for (size_t zi = 1; zi < TILES_PER_CELL; zi++) {
+            for (size_t zi = 1; zi < TILEMAP_LAYERS; zi++) {
                 tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, zi);
                 if (tileid == NOTILE) continue;
                 struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
@@ -162,7 +162,7 @@ void tilemap_animation_tick(struct tilemap *map) {
                 renew |= tileid != tile->next_frame;
             }
             if (renew) {
-                for (size_t i = 0; i < TILES_PER_CELL; i++) {
+                for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
                     tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
                     if (tile == NOTILE) continue;
                     tileset_draw_tile(map->cbuf, map->sets[TILESET_ID(tile)],

@@ -9,7 +9,7 @@
 
 #include <stdint.h>
 
-#define TILES_PER_CELL 3
+#define TILEMAP_LAYERS 2
 #define TILESET_ID(x) ((x) >> 10)
 #define TILE_ID(x) ((x) & 0x3FF)
 #define MKTILE(set, id) (((set) << 10) | (id))
@@ -58,14 +58,14 @@ tile_t tilemap_get_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer
 void tilemap_animation_tick(struct tilemap *map);
 
 inline static tile_t tilemap_set_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
-    tile_t *tilep = &map->tiles[layer + x*TILES_PER_CELL + y*TILES_PER_CELL*map->width];
+    tile_t *tilep = &map->tiles[layer + x*TILEMAP_LAYERS + y*TILEMAP_LAYERS*map->width];
     tile_t old = *tilep;
     *tilep = tile;
     return old;
 }
 
 inline static tile_t tilemap_get_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer) {
-    return map->tiles[layer + x*TILES_PER_CELL + y*TILES_PER_CELL*map->width];
+    return map->tiles[layer + x*TILEMAP_LAYERS + y*TILEMAP_LAYERS*map->width];
 }
 
 
