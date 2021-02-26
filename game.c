@@ -191,8 +191,10 @@ void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     xcb_keysym_t ksym = get_keysym(kc, st);
     switch (ksym) {
     case XK_R: // Restart game
-        state.level = 0;
-        next_level();
+        if (pressed) {
+            state.level = 0;
+            next_level();
+        }
         break;
     case XK_w:
         ctx.tick_early = !state.keys.forward && pressed;
