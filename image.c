@@ -298,6 +298,19 @@ static void do_blt_aligned(void *varg) {
         for (size_t i = 0; i < arg->w; i += 4) {
             void *ptr = arg->dst + j*arg->dstride + i;
             const __m128i d = _mm_load_si128((const void *)ptr);
+            const __m128i s = _mm_loadu_si128((const void *)(arg->src + j*arg->sstride + i));
+            _mm_store_si128(ptr, blend4(d, s));
+        }
+    }
+}
+
+static void do_blt_aligned2(void *varg) {
+    struct do_blt_arg *arg = varg;
+
+    for (size_t j = 0; j < arg->h; j++) {
+        for (size_t i = 0; i < arg->w; i += 4) {
+            void *ptr = arg->dst + j*arg->dstride + i;
+            const __m128i d = _mm_load_si128((const void *)ptr);
             const __m128i s = _mm_load_si128((const void *)(arg->src + j*arg->sstride + i));
             _mm_store_si128(ptr, blend4(d, s));
         }
@@ -403,8 +416,8 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
 
     if (fastpath) {
             /* Fast path for aligned non-resizing blits */
-        if (drect.x < 0) drect.width -= drect.x, srect.x += drect.x, drect.x = 0;
-        if (drect.y < 0) drect.height -= drect.y, srect.y += drect.y, drect.y = 0;
+        if (drect.x < 0) drect.width -= drect.x, srect.x -= drect.x, drect.x = 0;
+        if (drect.y < 0) drect.height -= drect.y, srect.y -= drect.y, drect.y = 0;
         drect.height = MIN(drect.height, src.height - srect.y);
         drect.width = MIN(drect.width, src.width - srect.x);
         if (LIKELY(drect.width > 0 && drect.height > 0)) {
@@ -426,7 +439,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                     &ddata[drect.y*dstride+drect.x],
                     &sdata[srect.y*sstride+srect.x]
                 };
-                submit_work(do_blt_aligned, &arg, sizeof arg);
+                submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
             } else {
                 size_t block = drect.height/nproc;
                 for (size_t i = 0; i < nproc; i++) {
@@ -435,7 +448,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                         &ddata[(drect.y + block*i)*dstride+drect.x],
                         &sdata[(srect.y + block*i)*sstride+srect.x]
                     };
-                    submit_work(do_blt_aligned, &arg, sizeof arg);
+                    submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
                 }
 
                 if (nproc*block != (size_t)drect.height) {
@@ -444,7 +457,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                         &ddata[(drect.y + block*nproc)*dstride+drect.x],
                         &sdata[(srect.y + block*nproc)*sstride+srect.x]
                     };
-                    submit_work(do_blt_aligned, &arg, sizeof arg);
+                    submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
                 }
             }
 
