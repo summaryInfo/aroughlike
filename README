@@ -27,6 +27,8 @@ Blending code requires SSE4.1
  * `+`/`=` -- zoom-in
  * `-` -- zoom-out
 
+TIP: You can move diagonally
+
 ## Building and running 
 
 This program can be run with
