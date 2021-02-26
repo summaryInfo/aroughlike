@@ -10,6 +10,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#define CACHE_LINE 64
+
 #define MIN(x, y) ((x) < (y) ? (x) : (y))
 #define MAX(x, y) ((x) > (y) ? (x) : (y))
 #define CLAMP(low, x, high) (MAX(MIN(x, high), low))

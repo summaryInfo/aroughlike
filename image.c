@@ -148,21 +148,21 @@ struct do_fill_arg {
     size_t stride;
 };
 
-static void do_fill_prefix(void *varg) {
+static void do_fill_unaligned(void *varg) {
     struct do_fill_arg *arg = varg;
 
     for (size_t j = 0; j < arg->h; j++, arg->ptr += arg->stride) {
         switch (arg->w) {
-        case 1: arg->ptr[2] = arg->fg; //fallthrough
-        case 2: arg->ptr[1] = arg->fg; //fallthrough
-        case 3: arg->ptr[0] = arg->fg; //fallthrough
+        case 1: arg->ptr[1] = arg->fg; //fallthrough
+        case 2: arg->ptr[2] = arg->fg; //fallthrough
+        case 3: arg->ptr[3] = arg->fg; //fallthrough
         default:;
         }
     }
 
 }
 
-static void do_fill(void *varg) {
+static void do_fill_aligned(void *varg) {
     struct do_fill_arg *arg = varg;
 
     __m128i val = _mm_set1_epi32(arg->fg);
@@ -179,38 +179,46 @@ void image_draw_rect(struct image im, struct rect rect, color_t fg) {
     size_t stride = (im.width + 3) & ~3;
     if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
         if (rect.x & 3 && rect.width > 4) {
-            struct do_fill_arg arg = {&data[rect.y * stride + rect.x], fg, rect.height, rect.x & 3, stride};
-            submit_work(do_fill_prefix, &arg, sizeof arg);
+            struct do_fill_arg arg = {
+                &data[rect.y * stride + rect.x],
+                fg, rect.height, 4 - (rect.x & 3), stride
+            };
+            submit_work(do_fill_unaligned, &arg, sizeof arg);
             rect.width -= 4 - (rect.x & 3);
             rect.x += 4 - (rect.x & 3);
         }
 
         if (rect.height < 2*(int)nproc) {
-            struct do_fill_arg arg = {&data[rect.y * stride + rect.x], fg, rect.height, rect.width & ~3, stride};
-            submit_work(do_fill, &arg, sizeof arg);
+            struct do_fill_arg arg = {
+                &data[rect.y * stride + rect.x],
+                fg, rect.height, rect.width & ~3, stride
+            };
+            submit_work(do_fill_aligned, &arg, sizeof arg);
         } else {
             size_t block = rect.height/nproc;
             for (size_t i = 0; i < nproc; i++) {
-                struct do_fill_arg arg = {&data[(rect.y + i*block) * stride + rect.x], fg, block, rect.width & ~3, stride};
-                submit_work(do_fill, &arg, sizeof arg);
+                struct do_fill_arg arg = {
+                    &data[(rect.y + i*block) * stride + rect.x],
+                    fg, block, rect.width & ~3, stride
+                };
+                submit_work(do_fill_aligned, &arg, sizeof arg);
             }
 
             if (nproc*block != (size_t)rect.height) {
-                struct do_fill_arg arg = {&data[(rect.y + nproc*block) * stride + rect.x], fg, rect.height - nproc*block, rect.width & ~3, stride};
-                submit_work(do_fill, &arg, sizeof arg);
+                struct do_fill_arg arg = {
+                    &data[(rect.y + nproc*block) * stride + rect.x],
+                    fg, rect.height - nproc*block, rect.width & ~3, stride
+                };
+                submit_work(do_fill_aligned, &arg, sizeof arg);
             }
         }
 
         if (rect.width & 3) {
-            color_t *ptr = &data[rect.y * stride + (rect.x + (size_t)(rect.width & ~3))];
-            for (size_t j = 0; j < (size_t)rect.height; j++, ptr += stride) {
-                switch (rect.width & 3) {
-                case 3: ptr[2] = fg; //fallthrough
-                case 2: ptr[1] = fg; //fallthrough
-                case 1: ptr[0] = fg; //fallthrough
-                case 0:;
-                }
-            }
+            struct do_fill_arg arg = {
+                &data[rect.y * stride + rect.x + (rect.width & ~3)],
+                fg, rect.height, rect.width - (rect.width & ~3), stride
+            };
+            submit_work(do_fill_unaligned, &arg, sizeof arg);
         }
 
         drain_work();
@@ -370,7 +378,7 @@ static void do_blt_aligned_scaling_linear(void *varg) {
     for (size_t j = arg->j0; j < arg->h; j++) {
         for (size_t i = arg->j0; i < arg->w; i += 4) {
             void *ptr = &arg->dst[j * arg->dstride + i];
-            const __m128i d = _mm_load_si128((const void *)ptr);
+            const __m128i d = _mm_load_si128(ptr);
             const __m128i s = _mm_set_epi32(
                 image_sample(arg->src, arg->x0 + (i + 3)*arg->xscale, arg->y0 + j*arg->yscale),
                 image_sample(arg->src, arg->x0 + (i + 2)*arg->xscale, arg->y0 + j*arg->yscale),

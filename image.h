@@ -8,8 +8,6 @@
 #include <math.h>
 #include <stdint.h>
 
-#define CACHE_LINE 64
-
 struct image {
     int16_t width;
     int16_t height;
