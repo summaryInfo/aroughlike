@@ -274,13 +274,13 @@ void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
         state.keys.right = pressed;
         break;
     case XK_minus:
-        ctx.scale = MAX(1, ctx.scale - pressed);
+        ctx.scale = MAX(1., ctx.scale - pressed);
         tilemap_set_scale(state.map, ctx.scale);
         ctx.want_redraw = 1;
         break;
     case XK_equal:
     case XK_plus:
-        ctx.scale += pressed;
+        ctx.scale = MIN(ctx.scale + pressed, 20);
         tilemap_set_scale(state.map, ctx.scale);
         ctx.want_redraw = 1;
         break;
