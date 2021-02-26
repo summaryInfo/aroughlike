@@ -516,7 +516,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                 struct do_blt_scale_arg arg = {
                     drect.height + MIN(drect.y, 0), drect.width - (drect.width & ~3), dstride, sstride,
                     &ddata[MAX(drect.y, 0) * dstride + drect.x + (drect.width & ~3)], src,
-                    srect.x + xscale*(drect.width & ~3), srect.y + MAX(-drect.y, 0)*yscale, xscale, yscale,
+                    sx0 + xscale*(drect.width & ~3), srect.y - MIN(drect.y, 0)*yscale, xscale, yscale,
                 };
                 submit_work(mode == sample_nearest ? do_blt_unaligned_scaling_nearest :
                             do_blt_unaligned_scaling_linear, &arg, sizeof arg);
