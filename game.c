@@ -83,7 +83,7 @@ void redraw(int64_t delta) {
     image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
 
     /* Draw map */
-    tilemap_draw(ctx.backbuf, state.map, state.camera_x, state.camera_y);
+    tilemap_draw(ctx.backbuf, state.map, state.camera_x + ctx.backbuf.width/2, state.camera_y + ctx.backbuf.height/2);
 
     if (state.state == s_win) /* Draw win screen */ {
         image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
@@ -129,11 +129,11 @@ int64_t tick(struct timespec current) {
         // Move camera towards player
 
         double x_speed_scale = MIN(ctx.backbuf.width/5, 512)/ctx.scale;
-        double y_speed_scale = MIN(ctx.backbuf.height/5, 512)/ctx.scale;
-        int32_t cam_dx = -pow((state.camera_x + (state.char_x*TILE_WIDTH + TILE_WIDTH/2)*state.map->scale -
-                               ctx.backbuf.width/2)/x_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
-        int32_t cam_dy = -pow((state.camera_y + (state.char_y*TILE_HEIGHT + TILE_HEIGHT/2)*state.map->scale -
-                               ctx.backbuf.height/2)/y_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
+        double y_speed_scale = MIN(ctx.backbuf.height/4, 512)/ctx.scale;
+        int32_t cam_dx = -pow((state.camera_x + (state.char_x*TILE_WIDTH +
+                TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
+        int32_t cam_dy = -pow((state.camera_y + (state.char_y*TILE_HEIGHT +
+                TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
         state.camera_x += cam_dx;
         state.camera_y += cam_dy;
         state.last_frame = current;
@@ -144,8 +144,6 @@ int64_t tick(struct timespec current) {
             ctx.want_redraw = 1;
         }
     }
-
-
 
     int64_t logic_delta = TIMEDIFF(state.last_tick, current);
     if ((logic_delta >= 10*SEC/TPS + 10000LL || (ctx.tick_early && !state.ticked_early))) {
@@ -381,6 +379,8 @@ format_error:
             goto format_error;
         }
     }
+
+    state.camera_y = state.camera_x = 50*ctx.scale;
 }
 
 struct tileset_desc {
