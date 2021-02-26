@@ -253,24 +253,25 @@ void reset_game(void) {
 /* This function is called on every key press */
 void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     xcb_keysym_t ksym = get_keysym(kc, st);
+    warn("Key %x (%c) %s", ksym, ksym, pressed ? "down" : "up");
     switch (ksym) {
     case XK_R: // Restart game
         if (pressed) reset_game();
         break;
     case XK_w:
-        ctx.tick_early = !state.keys.forward && pressed;
+        ctx.tick_early = !state.keys.forward;
         state.keys.forward = pressed;
         break;
     case XK_s:
-        ctx.tick_early = !state.keys.backward && pressed;
+        ctx.tick_early = !state.keys.backward;
         state.keys.backward = pressed;
         break;
     case XK_a:
-        ctx.tick_early = !state.keys.left && pressed;
+        ctx.tick_early = !state.keys.left;
         state.keys.left = pressed;
         break;
     case XK_d:
-        ctx.tick_early = !state.keys.right && pressed;
+        ctx.tick_early = !state.keys.right;
         state.keys.right = pressed;
         break;
     case XK_minus:

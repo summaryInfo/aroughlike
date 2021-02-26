@@ -298,75 +298,73 @@ static void run(void) {
         if (ppoll(&pfd, 1, &ts, NULL) < 0 && errno != EINTR)
             die("Poll error: %s", strerror(errno));
 
-        if (pfd.revents & POLLIN) {
-            for (xcb_generic_event_t *event, *nextev = NULL; nextev || (event = xcb_poll_for_event(ctx.con)); free(event)) {
-                if (nextev) event = nextev, nextev = NULL;
-                switch (event->response_type &= 0x7F) {
-                case XCB_EXPOSE:{
+        for (xcb_generic_event_t *event, *nextev = NULL; nextev || (event = xcb_poll_for_event(ctx.con)); free(event)) {
+            if (nextev) event = nextev, nextev = NULL;
+            switch (event->response_type &= 0x7F) {
+            case XCB_EXPOSE:{
+                ctx.force_redraw = 1;
+                break;
+            }
+            case XCB_CONFIGURE_NOTIFY:{
+                xcb_configure_notify_event_t *ev = (xcb_configure_notify_event_t*)event;
+                if (ev->width != ctx.backbuf.width || ev->height != ctx.backbuf.height) {
+                    struct image new = create_shm_image(ev->width, ev->height);
+                    SWAP(ctx.backbuf, new);
+                    free_image(&new);
                     ctx.force_redraw = 1;
-                    break;
                 }
-                case XCB_CONFIGURE_NOTIFY:{
-                    xcb_configure_notify_event_t *ev = (xcb_configure_notify_event_t*)event;
-                    if (ev->width != ctx.backbuf.width || ev->height != ctx.backbuf.height) {
-                        struct image new = create_shm_image(ev->width, ev->height);
-                        SWAP(ctx.backbuf, new);
-                        free_image(&new);
-                        ctx.force_redraw = 1;
-                    }
-                    break;
+                break;
+            }
+            case XCB_KEY_RELEASE:
+                /* Skip key repeats */
+                if ((nextev = xcb_poll_for_queued_event(ctx.con)) &&
+                        (nextev->response_type &= 0x7F) == XCB_KEY_PRESS &&
+                        event->full_sequence == nextev->full_sequence) {
+                    free(nextev);
+                    nextev = NULL;
+                    continue;
                 }
-                case XCB_KEY_RELEASE:
-                    /* Skip key repeats */
-                    if ((nextev = xcb_poll_for_queued_event(ctx.con)) &&
-                            (nextev->response_type &= 0x7F) == XCB_KEY_PRESS &&
-                            event->full_sequence == nextev->full_sequence) {
-                        free(nextev);
-                        nextev = NULL;
-                        continue;
-                    }
-                    // fallthrough
-                case XCB_KEY_PRESS: {
-                    xcb_key_release_event_t *ev = (xcb_key_release_event_t*)event;
-                    handle_key(ev->detail, ev->state, ev->response_type == XCB_KEY_PRESS);
-                    break;
-                }
-                case XCB_FOCUS_IN:
-                case XCB_FOCUS_OUT: {
-                    ctx.focused = event->response_type == XCB_FOCUS_IN;
-                    break;
-                }
-                case XCB_CLIENT_MESSAGE: {
-                    xcb_client_message_event_t *ev = (xcb_client_message_event_t*)event;
-                    ctx.want_exit |= ev->format == 32 && ev->data.data32[0] == ctx.atom.WM_DELETE_WINDOW;
-                    break;
-                }
-                case XCB_UNMAP_NOTIFY:
-                case XCB_MAP_NOTIFY:
-                    ctx.active = event->response_type == XCB_MAP_NOTIFY;
-                    break;
-                case XCB_VISIBILITY_NOTIFY: {
-                    xcb_visibility_notify_event_t *ev = (xcb_visibility_notify_event_t*)event;
-                    ctx.active = ev->state != XCB_VISIBILITY_FULLY_OBSCURED;
-                    break;
-                }
-                case XCB_MAPPING_NOTIFY: {
-                    xcb_mapping_notify_event_t *ev = (xcb_mapping_notify_event_t*)event;
-                    if (ev->request == XCB_MAPPING_KEYBOARD) configure_keyboard();
-                    break;
-                }
-                case XCB_DESTROY_NOTIFY:
-                case XCB_REPARENT_NOTIFY:
-                   /* ignore */
-                   break;
-                case 0: {
-                    xcb_generic_error_t *err = (xcb_generic_error_t*)event;
-                    warn("[X11 Error] major=%"PRIu8", minor=%"PRIu16", error=%"PRIu8, err->major_code, err->minor_code, err->error_code);
-                    break;
-                }
-                default:
-                    warn("Unknown xcb event type: %02"PRIu8, event->response_type);
-                }
+                // fallthrough
+            case XCB_KEY_PRESS: {
+                xcb_key_release_event_t *ev = (xcb_key_release_event_t*)event;
+                handle_key(ev->detail, ev->state, ev->response_type == XCB_KEY_PRESS);
+                break;
+            }
+            case XCB_FOCUS_IN:
+            case XCB_FOCUS_OUT: {
+                ctx.focused = event->response_type == XCB_FOCUS_IN;
+                break;
+            }
+            case XCB_CLIENT_MESSAGE: {
+                xcb_client_message_event_t *ev = (xcb_client_message_event_t*)event;
+                ctx.want_exit |= ev->format == 32 && ev->data.data32[0] == ctx.atom.WM_DELETE_WINDOW;
+                break;
+            }
+            case XCB_UNMAP_NOTIFY:
+            case XCB_MAP_NOTIFY:
+                ctx.active = event->response_type == XCB_MAP_NOTIFY;
+                break;
+            case XCB_VISIBILITY_NOTIFY: {
+                xcb_visibility_notify_event_t *ev = (xcb_visibility_notify_event_t*)event;
+                ctx.active = ev->state != XCB_VISIBILITY_FULLY_OBSCURED;
+                break;
+            }
+            case XCB_MAPPING_NOTIFY: {
+                xcb_mapping_notify_event_t *ev = (xcb_mapping_notify_event_t*)event;
+                if (ev->request == XCB_MAPPING_KEYBOARD) configure_keyboard();
+                break;
+            }
+            case XCB_DESTROY_NOTIFY:
+            case XCB_REPARENT_NOTIFY:
+               /* ignore */
+               break;
+            case 0: {
+                xcb_generic_error_t *err = (xcb_generic_error_t*)event;
+                warn("[X11 Error] major=%"PRIu8", minor=%"PRIu16", error=%"PRIu8, err->major_code, err->minor_code, err->error_code);
+                break;
+            }
+            default:
+                warn("Unknown xcb event type: %02"PRIu8, event->response_type);
             }
         }
 
