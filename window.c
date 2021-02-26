@@ -392,10 +392,12 @@ static void run(void) {
         next_timeout = ctx.active ? MIN(next_tick, MAX(next_draw, 0)) : next_tick;
         xcb_flush(ctx.con);
 
+#if 0 // Performance debug reporting
         struct timespec end;
         clock_gettime(CLOCK_TYPE, &end);
         int64_t dt = TIMEDIFF(cur, end);
         if (dt > 15*SEC/10000LL) warn("\033[31mDt=%d\033[m", (int)(dt/(SEC/10000LL)));
+#endif
     }
 
 }
