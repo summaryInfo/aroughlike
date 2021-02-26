@@ -57,8 +57,8 @@ struct gamestate {
     struct player {
         int16_t x;
         int16_t y;
-        int16_t dx;
-        int16_t dy;
+        double dx;
+        double dy;
         tile_t tile;
         int lives;
     } player;
@@ -181,8 +181,8 @@ int64_t tick(struct timespec current) {
                 TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
         int32_t cam_dy = -pow((state.camera_y + (state.player.y*TILE_HEIGHT +
                 TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
-        state.camera_x += cam_dx;
-        state.camera_y += cam_dy;
+        state.camera_x += MAX(-ctx.dpi, MIN(cam_dx, ctx.dpi));
+        state.camera_y += MAX(-ctx.dpi, MIN(cam_dy, ctx.dpi));
 
         state.last_frame = current;
         frame_delta = 0;
@@ -194,20 +194,32 @@ int64_t tick(struct timespec current) {
     }
 
     if ((logic_delta >= 10*SEC/TPS - 10000LL || (ctx.tick_early && !state.ticked_early))) {
+        state.ticked_early = ctx.tick_early && logic_delta > 10000LL;
         if (state.state == s_normal) {
-            state.player.dx = state.keys.right - state.keys.left;
-            state.player.dy = state.keys.backward - state.keys.forward;
+            int16_t dx = state.keys.right - state.keys.left;
+            int16_t dy = state.keys.backward - state.keys.forward;
 
             // It's complicated to allow wall gliding
             if (get_cell(state.player.x + state.player.dx, state.player.y + state.player.dy) != WALL) {
-                state.player.x += state.player.dx;
-                state.player.y += state.player.dy;
+                state.player.x += dx;
+                state.player.y += dy;
             } else if (get_cell(state.player.x + state.player.dx, state.player.y) != WALL) {
-                state.player.x += state.player.dx;
-                state.player.dy = 0;
+                state.player.x += dx;
+                dy = 0;
             } else if (get_cell(state.player.x, state.player.y + state.player.dy) != WALL) {
-                state.player.y += state.player.dy;
-                state.player.dx = 0;
+                state.player.y += dy;
+                dx = 0;
+            }
+
+            if (state.ticked_early) {
+                double dt = 1 - TIMEDIFF(state.last_tick, current)/(10.*SEC/TPS);
+                // Bezier curve for ease-in-out effect
+                dt = dt * dt * (3. - 2. * dt);
+                state.player.dx = state.player.dx*dt + dx;
+                state.player.dy = state.player.dy*dt + dy;
+            } else {
+                state.player.dx = dx;
+                state.player.dy = dy;
             }
 
             switch(get_cell(state.player.x, state.player.y)) {
@@ -229,11 +241,10 @@ int64_t tick(struct timespec current) {
                 tilemap_set_tile(state.map, state.player.x, state.player.y, 1, NOTILE);
             }
 
-            state.ticked_early = ctx.tick_early && logic_delta > 10000LL;
-            state.last_tick = current;
-            ctx.tick_early = 0;
             ctx.want_redraw = 1;
         }
+        state.last_tick = current;
+        ctx.tick_early = 0;
         logic_delta = 0;
     }
 
@@ -253,7 +264,7 @@ void reset_game(void) {
 /* This function is called on every key press */
 void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     xcb_keysym_t ksym = get_keysym(kc, st);
-    warn("Key %x (%c) %s", ksym, ksym, pressed ? "down" : "up");
+    //warn("Key %x (%c) %s", ksym, ksym, pressed ? "down" : "up");
     switch (ksym) {
     case XK_R: // Restart game
         if (pressed) reset_game();
