@@ -154,9 +154,9 @@ static void do_fill_unaligned(void *varg) {
 
     for (size_t j = 0; j < arg->h; j++, arg->ptr += arg->stride) {
         switch (arg->w) {
-        case 1: arg->ptr[1] = arg->fg; //fallthrough
-        case 2: arg->ptr[2] = arg->fg; //fallthrough
-        case 3: arg->ptr[3] = arg->fg; //fallthrough
+        case 3: arg->ptr[2] = arg->fg; //fallthrough
+        case 2: arg->ptr[1] = arg->fg; //fallthrough
+        case 1: arg->ptr[0] = arg->fg; //fallthrough
         default:;
         }
     }
@@ -169,10 +169,16 @@ static void do_fill_aligned(void *varg) {
 
     __m128i val = _mm_set1_epi32(arg->fg);
     for (size_t j = 0; j < arg->h; j++) {
-        for (size_t i = 0; i < arg->w; i += 4) {
-            void *ptr = arg->ptr + arg->stride*j + i;
-            _mm_store_si128(ptr, val);
+        char *ptr = (char *)(arg->ptr + arg->stride*j);
+        size_t i = 0, pref = (MIN(64 - ((uintptr_t)ptr & 63), arg->w*4) & 63);
+        for (; i < pref; i += 16) _mm_stream_si128((void *)(ptr + i), val);
+        for (; i + 64 < arg->w*4; i += 64) {
+            _mm_stream_si128((void *)(ptr + i), val);
+            _mm_stream_si128((void *)(ptr + i + 16), val);
+            _mm_stream_si128((void *)(ptr + i + 32), val);
+            _mm_stream_si128((void *)(ptr + i + 48), val);
         }
+        for (; i < arg->w*4; i += 16) _mm_stream_si128((void *)(ptr + i), val);
     }
 }
 
@@ -180,7 +186,7 @@ void image_draw_rect(struct image im, struct rect rect, color_t fg) {
     color_t *data = __builtin_assume_aligned(im.data, CACHE_LINE);
     size_t stride = (im.width + 3) & ~3;
     if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
-        if (rect.x & 3 && rect.width > 4) {
+        if (rect.x & 3) {
             struct do_fill_arg arg = {
                 &data[rect.y * stride + rect.x],
                 fg, rect.height, 4 - (rect.x & 3), stride
@@ -218,7 +224,7 @@ void image_draw_rect(struct image im, struct rect rect, color_t fg) {
         if (rect.width & 3) {
             struct do_fill_arg arg = {
                 &data[rect.y * stride + rect.x + (rect.width & ~3)],
-                fg, rect.height, rect.width - (rect.width & ~3), stride
+                fg, rect.height, rect.width & 3, stride
             };
             submit_work(do_fill_unaligned, &arg, sizeof arg);
         }
