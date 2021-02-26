@@ -248,7 +248,8 @@ inline static __m128i blend4(__m128i under, __m128i over) {
 __attribute__((always_inline))
 inline static color_t image_sample(struct image src, double x, double y) {
     // Always clamp to border
-    // IDK why I have implemented this
+    // IDK why I have implemented this...
+
     x = MAX(0, x), y = MAX(0, y);
 
     ssize_t x0 = floor(x), y0 = floor(y);
@@ -258,7 +259,6 @@ inline static color_t image_sample(struct image src, double x, double y) {
 
     color_t *data = __builtin_assume_aligned(src.data, CACHE_LINE);
 
-    // IDK why did i implement this...
     ssize_t x1 = ceil(x), y1 = ceil(y)*sstride;
 
     x1 = MIN(x1, src.width - 1);

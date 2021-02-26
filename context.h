@@ -90,7 +90,7 @@ inline static bool check_void_cookie(xcb_void_cookie_t ck) {
 
 void init(void);
 void cleanup(void);
-void redraw(int64_t delta);
+void redraw(struct timespec current);
 int64_t tick(struct timespec current);
 xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state);
 void handle_key(xcb_keycode_t kc, uint16_t state, bool pressed);

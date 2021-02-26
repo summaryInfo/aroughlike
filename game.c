@@ -28,11 +28,15 @@
 #define TILE_HEIGHT 16
 #define NTILESETS 3
 
-#define TILE_VOID MKTILE(0, 10*7+8)
-#define TILE_FLOOR MKTILE(0, 10*0+6)
-#define TILE_PLAYER MKTILE(2, 0*4+0)
-#define TILE_TRAP MKTILE(1, 24*4+2)
-#define TILE_EXIT MKTILE(0, 10*3+9)
+#define TILESET_STATIC 0
+#define TILESET_ANIMATED 1
+#define TILESET_ENTITIES 2
+
+#define TILE_VOID MKTILE(TILESET_STATIC, 10*7+8)
+#define TILE_FLOOR MKTILE(TILESET_STATIC, 10*0+6)
+#define TILE_PLAYER MKTILE(TILESET_ENTITIES, 0*4+0)
+#define TILE_TRAP MKTILE(TILESET_ANIMATED, 24*4+2)
+#define TILE_EXIT MKTILE(TILESET_STATIC, 10*3+9)
 
 struct gamestate {
     struct tilemap *map;
@@ -42,8 +46,14 @@ struct gamestate {
 
     int16_t camera_x;
     int16_t camera_y;
-    int16_t char_x;
-    int16_t char_y;
+
+    struct player {
+        int16_t x;
+        int16_t y;
+        int16_t dx;
+        int16_t dy;
+        tile_t tile;
+    } player;
 
     enum state {
         s_normal,
@@ -76,14 +86,32 @@ void load_map_from_file(const char *file);
 
 /* This is main drawing function, that is called
  * FPS times a second */
-void redraw(int64_t delta) {
-    (void)delta;
+void redraw(struct timespec current) {
 
     /* Clear screen */
     image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
 
     /* Draw map */
-    tilemap_draw(ctx.backbuf, state.map, state.camera_x + ctx.backbuf.width/2, state.camera_y + ctx.backbuf.height/2);
+    int16_t map_x = state.camera_x + ctx.backbuf.width/2;
+    int16_t map_y = state.camera_y + ctx.backbuf.height/2;
+    tilemap_draw(ctx.backbuf, state.map, map_x, map_y);
+
+    /* Draw player */
+    int16_t player_x = map_x + ctx.scale*TILE_WIDTH*(state.player.x);
+    int16_t player_y = map_y + ctx.scale*TILE_HEIGHT*(state.player.y);
+
+    if (state.state == s_normal) {
+        // Smoothly animate player movements...
+
+        double dt = 1 - TIMEDIFF(state.last_tick, current)/(10.*SEC/TPS);
+        // Bezier curve for ease-in-out effect
+        dt = dt * dt * (3. - 2. * dt);
+
+        player_x -= ctx.scale*TILE_WIDTH*state.player.dx*dt;
+        player_y -= ctx.scale*TILE_HEIGHT*state.player.dy*dt;
+    }
+
+    tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(state.player.tile)], TILE_ID(state.player.tile), player_x, player_y, ctx.scale);
 
     if (state.state == s_win) /* Draw win screen */ {
         image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
@@ -121,51 +149,57 @@ void next_level(void) {
  * (this is a place where all game logic resides) */
 int64_t tick(struct timespec current) {
     int64_t frame_delta = TIMEDIFF(state.last_frame, current);
-    if (frame_delta >= SEC/TPS + 10000LL) {
+    int64_t logic_delta = TIMEDIFF(state.last_tick, current);
+
+    if (frame_delta >= SEC/TPS - 10000LL) {
         state.frame_n = (state.frame_n + 1) % TPS;
-        if (state.frame_n % 10 == 0)
+
+        // Tick animaionts eveny 10 ticks
+        if (state.frame_n % 10 == 0) {
             tilemap_animation_tick(state.map);
+            // Player is not a part of the map
+            struct tile *tile = &state.tilesets[TILESET_ID(state.player.tile)]->tiles[TILE_ID(state.player.tile)];
+            state.player.tile = MKTILE(TILESET_ID(state.player.tile), tile->next_frame);
+        }
 
         // Move camera towards player
 
         double x_speed_scale = MIN(ctx.backbuf.width/5, 512)/ctx.scale;
         double y_speed_scale = MIN(ctx.backbuf.height/4, 512)/ctx.scale;
-        int32_t cam_dx = -pow((state.camera_x + (state.char_x*TILE_WIDTH +
+        int32_t cam_dx = -pow((state.camera_x + (state.player.x*TILE_WIDTH +
                 TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
-        int32_t cam_dy = -pow((state.camera_y + (state.char_y*TILE_HEIGHT +
+        int32_t cam_dy = -pow((state.camera_y + (state.player.y*TILE_HEIGHT +
                 TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
         state.camera_x += cam_dx;
         state.camera_y += cam_dy;
+
         state.last_frame = current;
         frame_delta = 0;
 
-        if (state.frame_n % 10 == 0 ||
-            cam_dx || cam_dy) {
+        if (state.frame_n % 10 == 0 || cam_dx ||
+            cam_dy || state.player.dx || state.player.dy) {
             ctx.want_redraw = 1;
         }
     }
 
-    int64_t logic_delta = TIMEDIFF(state.last_tick, current);
-    if ((logic_delta >= 10*SEC/TPS + 10000LL || (ctx.tick_early && !state.ticked_early))) {
+    if ((logic_delta >= 10*SEC/TPS - 10000LL || (ctx.tick_early && !state.ticked_early))) {
         if (state.state == s_normal) {
-            tile_t old_player = tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, NOTILE);
-
-            int16_t dx = state.keys.right - state.keys.left;
-            int16_t dy = state.keys.backward - state.keys.forward;
+            state.player.dx = state.keys.right - state.keys.left;
+            state.player.dy = state.keys.backward - state.keys.forward;
 
             // It's complicated to allow wall gliding
-            if (get_cell(state.char_x + dx, state.char_y + dy) != WALL) {
-                state.char_x += dx;
-                state.char_y += dy;
-            } else if (get_cell(state.char_x + dx, state.char_y) != WALL) {
-                state.char_x += dx;
-            } else if (get_cell(state.char_x, state.char_y + dy) != WALL) {
-                state.char_y += dy;
+            if (get_cell(state.player.x + state.player.dx, state.player.y + state.player.dy) != WALL) {
+                state.player.x += state.player.dx;
+                state.player.y += state.player.dy;
+            } else if (get_cell(state.player.x + state.player.dx, state.player.y) != WALL) {
+                state.player.x += state.player.dx;
+                state.player.dy = 0;
+            } else if (get_cell(state.player.x, state.player.y + state.player.dy) != WALL) {
+                state.player.y += state.player.dy;
+                state.player.dx = 0;
             }
 
-            tilemap_set_tile(state.map, state.char_x, state.char_y, ENT_LAYER, old_player);
-
-            switch(get_cell(state.char_x, state.char_y)) {
+            switch(get_cell(state.player.x, state.player.y)) {
             case VOID:
             case WALL:
             case TRAP:
@@ -358,9 +392,9 @@ format_error:
             tilemap_set_tile(state.map, x++, y, 0, TILE_VOID);
             break;
         case '@': /* player start */
-            state.char_x = x, state.char_y = y;
+            state.player.x = x, state.player.y = y;
             tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
-            tilemap_set_tile(state.map, x++, y, ENT_LAYER, TILE_PLAYER);
+            x++;
             break;
         case TRAP: /* trap */
             tilemap_set_tile(state.map, x++, y, 1, TILE_TRAP);
@@ -382,6 +416,8 @@ format_error:
         }
     }
 
+    state.player.dx = state.player.dy = 0;
+    state.player.tile = TILE_PLAYER;
     state.camera_y = state.camera_x = 50*ctx.scale;
 }
 
@@ -424,9 +460,9 @@ void do_load(void *varg) {
 
 void init(void) {
     struct tileset_desc descs[NTILESETS] = {
-        {"data/tiles.png", 10, 10, 0, 0},
-        {"data/ani.png", 4, 26, 1, 1},
-        {"data/ent.png", 4, 14, 1, 2},
+        {"data/tiles.png", 10, 10, 0, TILESET_STATIC},
+        {"data/ani.png", 4, 26, 1, TILESET_ANIMATED},
+        {"data/ent.png", 4, 14, 1, TILESET_ENTITIES},
     };
 
     for (size_t i = 0; i < NTILESETS; i++) {

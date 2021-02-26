@@ -13,7 +13,6 @@ struct tileset *create_tileset(const char *path, struct tile *tiles, size_t ntil
     set->ntiles = ntiles;
     set->tiles = tiles;
     set->refc = 1;
-    set->scale = 1.;
 
     for (size_t i = 0; i < ntiles; i++) {
         if (set->tiles[i].pos.width > 0) {
@@ -48,16 +47,16 @@ void ref_tileset(struct tileset *set) {
     set->refc++;
 }
 
-void tileset_draw_tile(struct image dst, struct tileset *set, tile_t tile, int16_t x, int16_t y) {
+void tileset_draw_tile(struct image dst, struct tileset *set, tile_t tile, int16_t x, int16_t y, double scale) {
     assert(tile < set->ntiles);
     assert(dst.data);
 
     struct tile *tl = &set->tiles[tile];
     struct rect drect = {
-        x + tl->origin_x*set->scale,
-        y + tl->origin_y*set->scale,
-        tl->pos.width*set->scale,
-        tl->pos.height*set->scale
+        x + tl->origin_x*scale,
+        y + tl->origin_y*scale,
+        tl->pos.width*scale,
+        tl->pos.height*scale
     };
     struct rect srect = {
         tl->pos.x,
@@ -66,10 +65,6 @@ void tileset_draw_tile(struct image dst, struct tileset *set, tile_t tile, int16
         tl->pos.height
     };
     image_blt(dst, drect, set->img, srect, 0);
-}
-
-void tileset_set_scale(struct tileset *set, double scale) {
-    set->scale = scale;
 }
 
 struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, int16_t tile_height, struct tileset **sets, size_t nsets) {
@@ -145,7 +140,7 @@ tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer
         tile_t tilei = tilemap_get_tile_unsafe(map, x, y, i);
         if (tilei == NOTILE) continue;
         tileset_draw_tile(map->cbuf, map->sets[TILESET_ID(tilei)],
-                          TILE_ID(tilei), x*map->tile_width, y*map->tile_height);
+                          TILE_ID(tilei), x*map->tile_width, y*map->tile_height, 1);
     }
 
     return old;
@@ -171,7 +166,7 @@ void tilemap_animation_tick(struct tilemap *map) {
                     tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
                     if (tile == NOTILE) continue;
                     tileset_draw_tile(map->cbuf, map->sets[TILESET_ID(tile)],
-                                      TILE_ID(tile), xi*map->tile_width, yi*map->tile_height);
+                                      TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
                 }
             }
         }

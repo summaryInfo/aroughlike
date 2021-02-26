@@ -376,11 +376,10 @@ static void run(void) {
         /* Game is drawn FPS times a second, or if forced
          * (but only if window is visible) */
 
-        int64_t delta_draw = TIMEDIFF(ctx.last_draw, cur);
-        int64_t next_draw = (SEC / FPS) - delta_draw;
+        int64_t next_draw = (SEC / FPS) - TIMEDIFF(ctx.last_draw, cur);
         if ((next_draw <= 10000LL || ctx.force_redraw) && ctx.active) {
             if (ctx.want_redraw || ctx.force_redraw) {
-                redraw(delta_draw);
+                redraw(cur);
                 renderer_update((struct rect){0,0,ctx.backbuf.width,ctx.backbuf.height});
                 ctx.want_redraw = 0;
                 ctx.force_redraw = 0;

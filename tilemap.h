@@ -21,7 +21,6 @@ struct tileset {
     struct image img;
     size_t ntiles;
     size_t refc;
-    double scale;
     struct tile {
         struct rect pos;
         int16_t origin_x;
@@ -47,8 +46,7 @@ struct tilemap {
 struct tileset *create_tileset(const char *path, struct tile *tiles, size_t ntiles);
 void unref_tileset(struct tileset *);
 void ref_tileset(struct tileset *);
-void tileset_draw_tile(struct image dst, struct tileset *set, tile_t tile, int16_t x, int16_t y);
-void tileset_set_scale(struct tileset *set, double scale);
+void tileset_draw_tile(struct image dst, struct tileset *set, tile_t tile, int16_t x, int16_t y, double scale);
 
 struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, int16_t tile_height, struct tileset **sets, size_t nsets) ;
 void free_tilemap(struct tilemap *map);
