@@ -37,6 +37,8 @@
 #define TILE_PLAYER MKTILE(TILESET_ENTITIES, 0*4+0)
 #define TILE_TRAP MKTILE(TILESET_ANIMATED, 24*4+2)
 #define TILE_EXIT MKTILE(TILESET_STATIC, 10*3+9)
+#define TILE_POISON MKTILE(TILESET_ANIMATED, 4*17+ 3)
+#define TILE_POISON_STATIC MKTILE(TILESET_STATIC, 10*8+ 9)
 
 struct gamestate {
     struct tilemap *map;
@@ -53,6 +55,7 @@ struct gamestate {
         int16_t dx;
         int16_t dy;
         tile_t tile;
+        int lives;
     } player;
 
     enum state {
@@ -110,6 +113,16 @@ void redraw(struct timespec current) {
 
     tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(state.player.tile)], TILE_ID(state.player.tile), player_x, player_y, ctx.scale);
 
+    /* Draw lives */
+
+    for (int i = 0; i < state.player.lives; i++) {
+        int16_t px = 20 + (state.player.lives - i)*TILE_WIDTH*ctx.interface_scale/2;
+        int16_t py = 24 - 8*(i & 1) ;
+        tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(TILE_POISON_STATIC)],
+                          TILE_ID(TILE_POISON_STATIC), px, py, ctx.interface_scale);
+    }
+
+
     if (state.state == s_win) /* Draw win screen */ {
         image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
                         ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFF00FF00);
@@ -123,6 +136,7 @@ void redraw(struct timespec current) {
 #define TRAP 'T'
 #define VOID ' '
 #define EXIT 'x'
+#define POISON 'P'
 
 inline static char get_cell(int x, int y) {
     if ((ssize_t)state.map->width <= x || x < 0) return VOID;
@@ -199,11 +213,20 @@ int64_t tick(struct timespec current) {
             switch(get_cell(state.player.x, state.player.y)) {
             case VOID:
             case WALL:
-            case TRAP:
                 state.state = s_game_over;
+                break;
+            case TRAP:
+                if (!--state.player.lives) {
+                    state.state = s_game_over;
+                }
                 break;
             case EXIT:
                 next_level();
+                break;
+            case POISON:
+                state.player.lives++;
+                state.mapchars[(state.map->width + 1)*state.player.y + state.player.x] = '.';
+                tilemap_set_tile(state.map, state.player.x, state.player.y, 1, NOTILE);
             }
 
             state.ticked_early = ctx.tick_early && logic_delta > 10000LL;
@@ -224,6 +247,7 @@ void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     case XK_R: // Restart game
         if (pressed) {
             state.level = 0;
+            state.player.lives = 1;
             next_level();
         }
         break;
@@ -290,6 +314,30 @@ tile_t decode_wall(int x, int y) {
     if (left == VOID && right == WALL) return MKTILE(0, 10*(rand()&3));
 
     return MKTILE(0, 6*10+9);
+}
+
+tile_t decode_wall_decoration(int x, int y) {
+    char bottom = get_cell(x, y + 1);
+    char left = get_cell(x - 1, y);
+    char cur = get_cell(x, y);
+
+    if (bottom != WALL && bottom != VOID && cur == WALL) {
+        // Horizontal wall
+        int r = rand();
+        if (r % 10 == 3) {
+            return  MKTILE(TILESET_ANIMATED, 9*4 + 2); /* Shield */
+        } else if (r % 10 == 5) {
+            return MKTILE(TILESET_ANIMATED, 26*4 + 2); /* Torch */
+        }
+    }
+    if (left == WALL && cur != WALL && cur != VOID) {
+        // Horizontal wall
+        if (rand() % 10 == 0) {
+            return MKTILE(TILESET_ANIMATED, 25*4 + 2); /* Torch */
+        }
+    }
+
+    return NOTILE;
 }
 
 tile_t decode_floor(int x, int y) {
@@ -396,6 +444,10 @@ format_error:
         case TRAP: /* trap */
             tilemap_set_tile(state.map, x++, y, 1, TILE_TRAP);
             break;
+        case POISON: /* poison */
+            tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
+            tilemap_set_tile(state.map, x++, y, 1, TILE_POISON);
+            break;
         case 'x': /* exit */
             tilemap_set_tile(state.map, x, y, 1, TILE_EXIT);
             // fallthrough
@@ -413,8 +465,14 @@ format_error:
         }
     }
 
+    for (x = 0; x < (int)width; x++) {
+        for (y = 0; y < (int)height; y++) {
+            // Decorate walls
+            tilemap_set_tile(state.map, x, y, 2, decode_wall_decoration(x, y));
+        }
+    }
+
     state.player.dx = state.player.dy = 0;
-    state.player.tile = TILE_PLAYER;
     state.camera_y = state.camera_x = 50*ctx.scale;
 }
 
@@ -458,13 +516,16 @@ void do_load(void *varg) {
 void init(void) {
     struct tileset_desc descs[NTILESETS] = {
         {"data/tiles.png", 10, 10, 0, TILESET_STATIC},
-        {"data/ani.png", 4, 26, 1, TILESET_ANIMATED},
+        {"data/ani.png", 4, 27, 1, TILESET_ANIMATED},
         {"data/ent.png", 4, 14, 1, TILESET_ENTITIES},
     };
 
     for (size_t i = 0; i < NTILESETS; i++) {
         submit_work(do_load, descs + i, sizeof *descs);
     }
+
+    state.player.tile = TILE_PLAYER;
+    state.player.lives = 1;
 
     drain_work();
     next_level();

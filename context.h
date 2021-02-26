@@ -63,6 +63,7 @@ struct context {
 
     double dpi;
     double scale;
+    double interface_scale;
 
     struct atom_ {
         xcb_atom_t _NET_WM_PID;

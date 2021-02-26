@@ -238,6 +238,7 @@ static void init_context(void) {
         if (it.data) dpi = MAX(dpi, (it.data->width_in_pixels * 25.4)/it.data->width_in_millimeters);
     ctx.dpi = dpi > 0 ? dpi : 96;
     ctx.scale = MAX(1, dpi/24);
+    ctx.interface_scale = MAX(1, dpi/32);
 
     /* To reduce number of dependencied
      * XKB/xkbcommon is not used is this program
