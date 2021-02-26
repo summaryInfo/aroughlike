@@ -1,6 +1,6 @@
 NAME ?= game
 
-CFLAGS= -O3 -flto -march=native -g -ffast-math
+CFLAGS= -O3 -flto -march=native -g -ffast-math -pthread
 
 CFLAGS += -std=c11 -Wall -Wextra -Wpedantic
 CFLAGS += -Wno-unknown-warning -Wno-unknown-warning-option
@@ -13,7 +13,7 @@ CFLAGS += -Wswitch-bool -Wpacked -Wshadow -Wformat-security
 CFLAGS += -Wswitch-unreachable -Wlogical-op -Wstringop-truncation
 CFLAGS += -Wnested-externs -Wstrict-prototypes
 
-OBJ := window.o image.o game.o tilemap.o
+OBJ := window.o image.o game.o tilemap.o worker.o
 
 LIBS != pkg-config xcb xcb-shm --libs
 INCLUES != pkg-config xcb xcb-shm --cflags
@@ -35,8 +35,8 @@ force: clean
 $(NAME): $(OBJ)
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJ) $(LDLIBS) -o $@
 
-window.o: image.h util.h context.h
-image.o: image.h util.h stb_image.h context.h
+window.o: image.h util.h context.h worker.h
+image.o: image.h util.h stb_image.h context.h worker.h
 game.o: context.h util.h keysymdef.h tilemap.h
 tilemap.o: image.h tilemap.h util.h
 

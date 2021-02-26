@@ -5,6 +5,7 @@
 #include "util.h"
 #include "image.h"
 #include "context.h"
+#include "worker.h"
 
 #include <assert.h>
 #include <ctype.h>
@@ -405,6 +406,7 @@ int main(int argc, char **argv) {
      * parsing of stdio functions...) */
     setlocale(LC_CTYPE, "");
 
+    init_workers();
     init_context();
     init();
 
@@ -412,6 +414,7 @@ int main(int argc, char **argv) {
 
     cleanup();
     free_context();
+    fini_workers(1);
 
     return EXIT_SUCCESS;
 }
