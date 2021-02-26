@@ -148,6 +148,7 @@ struct do_fill_arg {
     size_t stride;
 };
 
+__attribute__((hot))
 static void do_fill_unaligned(void *varg) {
     struct do_fill_arg *arg = varg;
 
@@ -162,6 +163,7 @@ static void do_fill_unaligned(void *varg) {
 
 }
 
+__attribute__((hot))
 static void do_fill_aligned(void *varg) {
     struct do_fill_arg *arg = varg;
 
@@ -291,6 +293,7 @@ struct do_blt_arg {
     color_t *src;
 };
 
+__attribute__((hot))
 static void do_blt_aligned(void *varg) {
     struct do_blt_arg *arg = varg;
 
@@ -304,6 +307,7 @@ static void do_blt_aligned(void *varg) {
     }
 }
 
+__attribute__((hot))
 static void do_blt_aligned2(void *varg) {
     struct do_blt_arg *arg = varg;
 
@@ -317,6 +321,7 @@ static void do_blt_aligned2(void *varg) {
     }
 }
 
+__attribute__((hot))
 static void do_blt_unaligned(void *varg) {
     struct do_blt_arg *arg = varg;
 
@@ -342,6 +347,7 @@ struct do_blt_scale_arg {
     double yscale;
 };
 
+__attribute__((hot))
 static void do_blt_unaligned_scaling_nearest(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
@@ -354,6 +360,7 @@ static void do_blt_unaligned_scaling_nearest(void *varg) {
     }
 }
 
+__attribute__((hot))
 static void do_blt_unaligned_scaling_linear(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
@@ -366,6 +373,7 @@ static void do_blt_unaligned_scaling_linear(void *varg) {
     }
 }
 
+__attribute__((hot))
 static void do_blt_aligned_scaling_nearest(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
@@ -383,6 +391,7 @@ static void do_blt_aligned_scaling_nearest(void *varg) {
     }
 }
 
+__attribute__((hot))
 static void do_blt_aligned_scaling_linear(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
@@ -469,8 +478,6 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                 };
                 submit_work(do_blt_unaligned, &arg, sizeof arg);
             }
-
-            drain_work();
         }
     } else {
         if (LIKELY(drect.width + MIN(drect.x, 0) > 0 && drect.height + MIN(drect.y, 0) > 0)) {
@@ -534,7 +541,8 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                 submit_work(mode == sample_nearest ? do_blt_unaligned_scaling_nearest :
                             do_blt_unaligned_scaling_linear, &arg, sizeof arg);
             }
-            drain_work();
         }
     }
+
+    drain_work();
 }

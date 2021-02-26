@@ -189,10 +189,10 @@ void tilemap_random_tick(struct tilemap *map) {
             tilemap_set_tile_unsafe(map, xi, yi, 0, MKTILE(TILESET_ID(tileid), tile->next_frame));
 
             for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
-                tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
-                if (tile == NOTILE) continue;
-                tileset_draw_tile(map->cbuf, map->sets[TILESET_ID(tile)],
-                                  TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
+                tile_t tilei = tilemap_get_tile_unsafe(map, xi, yi, i);
+                if (tilei == NOTILE) continue;
+                tileset_draw_tile(map->cbuf, map->sets[TILESET_ID(tilei)],
+                                  TILE_ID(tilei), xi*map->tile_width, yi*map->tile_height, 1);
             }
         }
     }

@@ -213,6 +213,9 @@ int64_t tick(struct timespec current) {
             } else if (get_cell(state.player.x, state.player.y + dy) != WALL) {
                 state.player.y += dy;
                 dx = 0;
+            } else {
+                dx = 0;
+                dy = 0;
             }
 
             if (state.ticked_early) {
@@ -358,6 +361,17 @@ tile_t decode_wall_decoration(int x, int y) {
         // Horizontal wall
         if (rand() % 10 == 0) {
             return MKTILE(TILESET_ANIMATED, 25*4 + 2); /* Torch */
+        }
+    }
+
+    if (cur == '.') {
+        int r = rand();
+        if (r % 20 == 3) {
+            switch((r/20) % 7) {
+            case 0: return MKTILE(TILESET_ANIMATED, 5*4 + 2); /* Torch */
+            case 1: return MKTILE(TILESET_ANIMATED, 4*4 + 2); /* Torch */
+            default:;
+            }
         }
     }
 
