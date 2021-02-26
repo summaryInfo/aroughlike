@@ -281,15 +281,6 @@ inline static color_t image_sample(struct image src, double x, double y) {
     return color_mix(v0, v1, valpha);
 }
 
-__attribute__((always_inline))
-inline static color_t image_sample_nearest(struct image src, double x, double y) {
-    size_t stride = (src.width + 3) & ~3;
-    size_t ix = MIN(MAX(0, x), src.width - 1);
-    size_t iy = MIN(MAX(0, y), src.height - 1);
-    return src.data[iy*stride+ix];
-}
-
-
 struct do_blt_arg {
     size_t h;
     size_t w;
@@ -358,8 +349,10 @@ static void do_blt_unaligned_scaling_nearest(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
     for (size_t j = 0; j < arg->h; j++) {
+        size_t iy = MIN(MAX(0, arg->y0 + j*arg->yscale), arg->src.height - 1);
         for (size_t i = 0; i < arg->w; i++) {
-            color_t srcc = image_sample_nearest(arg->src, arg->x0 + i*arg->xscale, arg->y0 + j*arg->yscale);
+            size_t ix = MIN(MAX(0, arg->x0 + i*arg->xscale), arg->src.width - 1);
+            color_t srcc = arg->src.data[iy*arg->sstride+ix];
             color_t *pdstc = &arg->dst[j * arg->dstride + i];
             *pdstc = color_blend(*pdstc, srcc);
         }
@@ -383,16 +376,37 @@ __attribute__((hot))
 static void do_blt_aligned_scaling_nearest(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
-    for (size_t j = 0; j < arg->h; j++) {
-        for (size_t i = 0; i < arg->w; i += 4) {
-            void *ptr = &arg->dst[j * arg->dstride + i];
-            const __m128i d = _mm_load_si128((const void *)ptr);
-            const __m128i s = _mm_set_epi32(
-                image_sample_nearest(arg->src, arg->x0 + (i + 3)*arg->xscale, arg->y0 + j*arg->yscale),
-                image_sample_nearest(arg->src, arg->x0 + (i + 2)*arg->xscale, arg->y0 + j*arg->yscale),
-                image_sample_nearest(arg->src, arg->x0 + (i + 1)*arg->xscale, arg->y0 + j*arg->yscale),
-                image_sample_nearest(arg->src, arg->x0 + (i + 0)*arg->xscale, arg->y0 + j*arg->yscale));
-            _mm_store_si128(ptr, blend4(d, s));
+    if (arg->xscale > 0 && arg->x0 >= 0 && (ssize_t)(arg->x0 + arg->w*arg->xscale) <= arg->src.width - 1) {
+        for (size_t j = 0; j < arg->h; j++) {
+            color_t *sptr = arg->src.data +
+                    (size_t)MIN(MAX(0, arg->y0 + j*arg->yscale),
+                    arg->src.height - 1)*arg->sstride;
+            for (size_t i = 0; i < arg->w; i += 4) {
+                void *ptr = (char *)&arg->dst[j * arg->dstride + i];
+                size_t ix0 = arg->x0 + (i + 0)*arg->xscale;
+                size_t ix1 = arg->x0 + (i + 1)*arg->xscale;
+                size_t ix2 = arg->x0 + (i + 2)*arg->xscale;
+                size_t ix3 = arg->x0 + (i + 3)*arg->xscale;
+                const __m128i s = _mm_set_epi32(sptr[ix3], sptr[ix2], sptr[ix1], sptr[ix0]);
+                const __m128i d = _mm_load_si128(ptr);
+                _mm_store_si128(ptr, blend4(d, s));
+            }
+        }
+    } else {
+        for (size_t j = 0; j < arg->h; j++) {
+            color_t *sptr = arg->src.data +
+                    (size_t)MIN(MAX(0, arg->y0 + j*arg->yscale),
+                    arg->src.height - 1)*arg->sstride;
+            for (size_t i = 0; i < arg->w; i += 4) {
+                void *ptr = &arg->dst[j * arg->dstride + i];
+                size_t ix0 = MAX(0, MIN(arg->x0 + (i + 0)*arg->xscale, arg->src.width - 1));
+                size_t ix1 = MAX(0, MIN(arg->x0 + (i + 1)*arg->xscale, arg->src.width - 1));
+                size_t ix2 = MAX(0, MIN(arg->x0 + (i + 2)*arg->xscale, arg->src.width - 1));
+                size_t ix3 = MAX(0, MIN(arg->x0 + (i + 3)*arg->xscale, arg->src.width - 1));
+                const __m128i s = _mm_set_epi32(sptr[ix3], sptr[ix2], sptr[ix1], sptr[ix0]);
+                const __m128i d = _mm_load_si128(ptr);
+                _mm_store_si128(ptr, blend4(d, s));
+            }
         }
     }
 }

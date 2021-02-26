@@ -115,15 +115,17 @@ void submit_work(void (*func)(void *), void *data, size_t data_size) {
     memcpy(new->data, data, data_size);
 
     pthread_mutex_lock(&in_mtx);
-    if (last) {
+    bool ins_new = last;
+    if (ins_new) {
         last->next = new;
         last = new;
-    } else last = first = new;
+    } else {
+        last = first = new;
+    }
     pthread_mutex_unlock(&in_mtx);
-
     pthread_rwlock_unlock(&rw);
 
-    //pthread_cond_signal(&in_cond);
+    if (ins_new) pthread_cond_signal(&in_cond);
 }
 
 void init_workers(void) {
@@ -137,8 +139,8 @@ void init_workers(void) {
     pthread_mutex_init(&in_mtx, NULL);
     pthread_rwlock_init(&rw, NULL);
 
-    nproc = sysconf(_SC_NPROCESSORS_ONLN) - 1;
-   for (size_t i = 0; i < nproc; i++)
+    nproc = sysconf(_SC_NPROCESSORS_ONLN) + 1;
+    for (size_t i = 0; i < nproc; i++)
         pthread_create(threads + i, NULL, worker, NULL);
 }
 
