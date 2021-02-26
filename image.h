@@ -59,36 +59,6 @@ inline static color_t color_mix(color_t dstc, color_t srcc, double alpha) {
             color_a(dstc)*(1. - alpha) + color_a(srcc)*alpha);
 }
 
-__attribute__((always_inline))
-inline static color_t image_sample(struct image src, double x, double y, enum sampler_mode mode) {
-    // Always clamp to border
-    x = MAX(0, x), y = MAX(0, y);
-
-    ssize_t x0 = floor(x), y0 = floor(y);
-    x0 = MIN(x0, src.width - 1);
-    y0 = MIN(y0, src.height - 1);
-
-    color_t *data = __builtin_assume_aligned(src.data, CACHE_LINE);
-
-    if (UNLIKELY(mode == sample_linear)) {
-        // IDK why did i implement this...
-        ssize_t x1 = ceil(x), y1 = ceil(y)*src.width;
-
-        x1 = MIN(x1, src.width - 1);
-        y1 = MIN(y1, src.width*(src.height - 1));
-
-        double valpha = y - y0, halpha = x - x0;
-        y0 *= src.width;
-
-        color_t v0 = color_mix(data[x0+y0], data[x1+y0], halpha);
-        color_t v1 = color_mix(data[x0+y1], data[x1+y1], halpha);
-
-        return color_mix(v0, v1, valpha);
-    } else {
-        return data[x0 + y0*src.width];
-    }
-}
-
 void image_draw_rect(struct image im, struct rect rect, color_t fg);
 void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode);
 struct image create_image(const char *file);

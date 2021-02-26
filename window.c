@@ -61,14 +61,16 @@ static void renderer_update(struct rect rect) {
      * to the game window
      */
 
+    size_t stride = (ctx.backbuf.width + 3) & ~3;
+
     if (ctx.has_shm_pixmaps) {
         xcb_copy_area(ctx.con, ctx.shm_pixmap, ctx.wid, ctx.gc, rect.x, rect.y, rect.x, rect.y, rect.width, rect.height);
     } else if (ctx.has_shm) {
-        xcb_shm_put_image(ctx.con, ctx.wid, ctx.gc, ctx.backbuf.width, ctx.backbuf.height, rect.x, rect.y,
+        xcb_shm_put_image(ctx.con, ctx.wid, ctx.gc, stride, ctx.backbuf.height, rect.x, rect.y,
                           rect.width, rect.height, rect.x, rect.y, 32, XCB_IMAGE_FORMAT_Z_PIXMAP, 0, ctx.shm_seg, 0);
     } else {
-        xcb_put_image(ctx.con, XCB_IMAGE_FORMAT_Z_PIXMAP, ctx.wid, ctx.gc, ctx.backbuf.width, rect.height,
-                      0, rect.y, 0, 32, rect.height * ctx.backbuf.width * sizeof(color_t), (const uint8_t *)(ctx.backbuf.data+rect.y*ctx.backbuf.width));
+        xcb_put_image(ctx.con, XCB_IMAGE_FORMAT_Z_PIXMAP, ctx.wid, ctx.gc, stride, rect.height,
+                      0, rect.y, 0, 32, rect.height * stride * sizeof(color_t), (const uint8_t *)(ctx.backbuf.data+rect.y*stride));
     }
 }
 
