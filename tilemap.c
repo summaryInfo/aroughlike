@@ -150,6 +150,8 @@ void tilemap_set_scale(struct tilemap *map, double scale) {
     map->scale = scale;
 }
 
+#define TILE_TRAP MKTILE(1, 24*4+2)
+
 void tilemap_animation_tick(struct tilemap *map) {
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
@@ -158,6 +160,11 @@ void tilemap_animation_tick(struct tilemap *map) {
                 tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, zi);
                 if (tileid == NOTILE) continue;
                 struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
+
+                // Thats a hack to make traps work less
+                // frequently
+                if (tileid == TILE_TRAP && rand() % 17 != 1) continue;
+
                 tilemap_set_tile_unsafe(map, xi, yi, zi, MKTILE(TILESET_ID(tileid), tile->next_frame));
                 renew |= tileid != tile->next_frame;
             }

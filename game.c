@@ -39,6 +39,12 @@
 #define TILE_POISON MKTILE(TILESET_ANIMATED, 4*17+ 3)
 #define TILE_POISON_STATIC MKTILE(TILESET_STATIC, 10*8+ 9)
 
+#define WALL '#'
+#define TRAP 'T'
+#define VOID ' '
+#define EXIT 'x'
+#define POISON 'P'
+
 struct gamestate {
     struct tilemap *map;
     struct tileset *tilesets[NTILESETS];
@@ -110,7 +116,8 @@ void redraw(struct timespec current) {
         player_y -= ctx.scale*TILE_HEIGHT*state.player.dy*dt;
     }
 
-    tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(state.player.tile)], TILE_ID(state.player.tile), player_x, player_y, ctx.scale);
+    tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(state.player.tile)],
+                      TILE_ID(state.player.tile), player_x, player_y, ctx.scale);
 
     /* Draw lives */
 
@@ -130,12 +137,6 @@ void redraw(struct timespec current) {
                         ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFFFF0000);
     }
 }
-
-#define WALL '#'
-#define TRAP 'T'
-#define VOID ' '
-#define EXIT 'x'
-#define POISON 'P'
 
 inline static char get_cell(int x, int y) {
     if ((ssize_t)state.map->width <= x || x < 0) return VOID;
@@ -215,7 +216,7 @@ int64_t tick(struct timespec current) {
                 state.state = s_game_over;
                 break;
             case TRAP:
-                if (!--state.player.lives) {
+                if (tilemap_get_tile(state.map, state.player.x, state.player.y, 1) != TILE_TRAP && !--state.player.lives) {
                     state.state = s_game_over;
                 }
                 break;
