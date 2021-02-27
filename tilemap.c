@@ -156,9 +156,10 @@ void tilemap_animation_tick(struct tilemap *map) {
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
             bool renew = 0;
-            for (size_t zi = 1; zi < TILEMAP_LAYERS; zi++) {
+            for (size_t zi = 0; zi < TILEMAP_LAYERS; zi++) {
                 tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, zi);
                 if (tileid == NOTILE) continue;
+                if (tileid == TILE_TRAP) continue;
                 struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
                 tilemap_set_tile_unsafe(map, xi, yi, zi, MKTILE(TILESET_ID(tileid), tile->next_frame));
                 renew |= tileid != tile->next_frame;
@@ -179,11 +180,7 @@ void tilemap_random_tick(struct tilemap *map) {
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
             tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, 0);
-            if ((tileid & ~3) != (TILE_TRAP & ~3)) continue;
-
-            // Thats a hack to make traps work less
-            // frequently
-            if (tileid == TILE_TRAP && rand() % 17 != 1) continue;
+            if (tileid != TILE_TRAP || rand() % 84 != 1) continue;
 
             struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
             tilemap_set_tile_unsafe(map, xi, yi, 0, MKTILE(TILESET_ID(tileid), tile->next_frame));
