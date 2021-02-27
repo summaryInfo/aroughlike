@@ -505,7 +505,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
             double sx0 = srect.x;
             if (drect.x & 3 && drect.x > 0) {
                 struct do_blt_scale_arg arg = {
-                    drect.height + MIN(drect.y, 0), drect.x & 3, dstride, sstride,
+                    drect.height + MIN(drect.y, 0), 4 - (drect.x & 3), dstride, sstride,
                     &ddata[MAX(drect.y, 0) * dstride + drect.x], src,
                     srect.x, srect.y - MIN(drect.y, 0)*yscale, xscale, yscale,
                 };
