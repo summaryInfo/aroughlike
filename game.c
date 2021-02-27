@@ -92,13 +92,18 @@ void load_map_from_file(const char *file);
 /* This is main drawing function, that is called
  * FPS times a second */
 void redraw(struct timespec current) {
-
-    /* Clear screen */
-    image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
-
-    /* Draw map */
     int16_t map_x = state.camera_x + ctx.backbuf.width/2;
     int16_t map_y = state.camera_y + ctx.backbuf.height/2;
+    int16_t map_h = ctx.scale*state.map->height*TILE_WIDTH;
+    int16_t map_w = ctx.scale*state.map->width*TILE_WIDTH;
+
+    /* Clear screen */
+    image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, map_y}, BG_COLOR);
+    image_draw_rect(ctx.backbuf, (struct rect){0, map_y, map_x, map_h}, BG_COLOR);
+    image_draw_rect(ctx.backbuf, (struct rect){0, map_y + map_h, ctx.backbuf.width, ctx.backbuf.height - map_y - map_h}, BG_COLOR);
+    image_draw_rect(ctx.backbuf, (struct rect){map_x + map_w, map_y, ctx.backbuf.width - map_x - map_w, map_h}, BG_COLOR);
+
+    /* Draw map */
     tilemap_draw(ctx.backbuf, state.map, map_x, map_y);
 
     /* Draw player */

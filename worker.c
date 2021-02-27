@@ -139,7 +139,7 @@ void init_workers(void) {
     pthread_mutex_init(&in_mtx, NULL);
     pthread_rwlock_init(&rw, NULL);
 
-    nproc = sysconf(_SC_NPROCESSORS_ONLN) + 1;
+    nproc = MIN(sysconf(_SC_NPROCESSORS_ONLN), MAX_THREADS);
     for (size_t i = 0; i < nproc; i++)
         pthread_create(threads + i, NULL, worker, NULL);
 }

@@ -462,7 +462,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                 drect.x += 4 - (drect.x & 3);
             }
 
-            if (drect.height < 4*(int)nproc) {
+            if (drect.height*drect.width < 256*(int)nproc) {
                 struct do_blt_arg arg = {
                     drect.height, drect.width & ~3, dstride, sstride,
                     &ddata[drect.y*dstride+drect.x],
@@ -520,7 +520,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                 drect.x = 0;
             }
 
-            if (drect.height < 4*(int)nproc) {
+            if (drect.height*drect.width < 256*(int)nproc) {
                     struct do_blt_scale_arg arg = {
                         drect.height + MIN(drect.y, 0), drect.width & ~3, dstride, sstride,
                         &ddata[MAX(drect.y, 0) * dstride + drect.x], src,
