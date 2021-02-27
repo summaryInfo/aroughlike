@@ -10,7 +10,7 @@ void init_workers(void);
 void drain_work(void);
 void fini_workers(_Bool force);
 
-extern size_t nproc;
+extern int nproc;
 
 #endif
 

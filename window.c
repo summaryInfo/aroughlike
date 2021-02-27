@@ -382,9 +382,17 @@ static void run(void) {
                 renderer_update((struct rect){0,0,ctx.backbuf.width,ctx.backbuf.height});
                 ctx.want_redraw = 0;
                 ctx.force_redraw = 0;
+
+#if 1 // Performance debug reporting
+                struct timespec end;
+                clock_gettime(CLOCK_TYPE, &end);
+                int64_t dt = TIMEDIFF(cur, end);
+                warn("Dt = \033[1;%dm%d\033[m", (dt <= 15*SEC/10000LL) + 31, (int)(dt/(SEC/10000LL)));
+#endif
             }
             next_draw = (SEC / FPS);
             ctx.last_draw = cur;
+
         }
 
         // Poll timeout is calculated from timeout to next redraw/game tick
@@ -392,12 +400,6 @@ static void run(void) {
         next_timeout = ctx.active ? MIN(next_tick, MAX(next_draw, 0)) : next_tick;
         xcb_flush(ctx.con);
 
-#if 0 // Performance debug reporting
-        struct timespec end;
-        clock_gettime(CLOCK_TYPE, &end);
-        int64_t dt = TIMEDIFF(cur, end);
-        if (dt > 15*SEC/10000LL) warn("\033[31mDt=%d\033[m", (int)(dt/(SEC/10000LL)));
-#endif
     }
 
 }

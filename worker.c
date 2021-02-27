@@ -22,7 +22,7 @@ struct job {
     char data[];
 };
 
-size_t nproc;
+int nproc;
 
 static pthread_t threads[MAX_THREADS];
 
@@ -140,7 +140,7 @@ void init_workers(void) {
     pthread_rwlock_init(&rw, NULL);
 
     nproc = MIN(sysconf(_SC_NPROCESSORS_ONLN), MAX_THREADS);
-    for (size_t i = 0; i < nproc; i++)
+    for (int i = 0; i < nproc; i++)
         pthread_create(threads + i, NULL, worker, NULL);
 }
 
@@ -150,7 +150,7 @@ void fini_workers(_Bool force) {
     __atomic_store_n(&should_exit, 1, __ATOMIC_RELAXED);
     pthread_cond_broadcast(&in_cond);
 
-    for (size_t i = 0; i < nproc; i++)
+    for (int i = 0; i < nproc; i++)
         pthread_join(threads[i], NULL);
 
     pthread_cond_destroy(&in_cond);

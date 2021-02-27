@@ -28,6 +28,9 @@
 #include "stb_image.h"
 #pragma GCC diagnostic pop
 
+
+#define FIXPREC 16
+
 struct image create_empty_image(int16_t width, int16_t height) {
     size_t stride = (width + 3) & ~3;
     color_t *restrict data = aligned_alloc(CACHE_LINE, stride*height*sizeof(color_t));
@@ -332,26 +335,26 @@ static void do_blt_unaligned(void *varg) {
 }
 
 struct do_blt_scale_arg {
-    size_t h;
-    size_t w;
-    size_t dstride;
-    size_t sstride;
+    ssize_t h;
+    ssize_t w;
+    ssize_t dstride;
+    ssize_t sstride;
     color_t *dst;
     struct image src;
-    double x0;
-    double y0;
-    double xscale;
-    double yscale;
+    ssize_t x0;
+    ssize_t y0;
+    ssize_t xscale;
+    ssize_t yscale;
 };
 
 __attribute__((hot))
 static void do_blt_unaligned_scaling_nearest(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
-    for (size_t j = 0; j < arg->h; j++) {
-        size_t iy = MIN(MAX(0, arg->y0 + j*arg->yscale), arg->src.height - 1);
-        for (size_t i = 0; i < arg->w; i++) {
-            size_t ix = MIN(MAX(0, arg->x0 + i*arg->xscale), arg->src.width - 1);
+    for (ssize_t j = 0; j < arg->h; j++) {
+        ssize_t iy = MIN(MAX(0, (arg->y0 + j*arg->yscale) >> FIXPREC), arg->src.height - 1);
+        for (ssize_t i = 0; i < arg->w; i++) {
+            ssize_t ix = MIN(MAX(0, (arg->x0 + i*arg->xscale) >> FIXPREC), arg->src.width - 1);
             color_t srcc = arg->src.data[iy*arg->sstride+ix];
             color_t *pdstc = &arg->dst[j * arg->dstride + i];
             *pdstc = color_blend(*pdstc, srcc);
@@ -363,9 +366,9 @@ __attribute__((hot))
 static void do_blt_unaligned_scaling_linear(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
-    for (size_t j = 0; j < arg->h; j++) {
-        for (size_t i = 0; i < arg->w; i++) {
-            color_t srcc = image_sample(arg->src, arg->x0 + i*arg->xscale, arg->y0 + j*arg->yscale);
+    for (ssize_t j = 0; j < arg->h; j++) {
+        for (ssize_t i = 0; i < arg->w; i++) {
+            color_t srcc = image_sample(arg->src, (arg->x0 + i*arg->xscale), (arg->y0 + j*arg->yscale));
             color_t *pdstc = &arg->dst[j * arg->dstride + i];
             *pdstc = color_blend(*pdstc, srcc);
         }
@@ -376,33 +379,29 @@ __attribute__((hot))
 static void do_blt_aligned_scaling_nearest(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
-    if (arg->xscale > 0 && arg->x0 >= 0 && (ssize_t)(arg->x0 + arg->w*arg->xscale) <= arg->src.width - 1) {
-        for (size_t j = 0; j < arg->h; j++) {
-            color_t *sptr = arg->src.data +
-                    (size_t)MIN(MAX(0, arg->y0 + j*arg->yscale),
-                    arg->src.height - 1)*arg->sstride;
-            for (size_t i = 0; i < arg->w; i += 4) {
+    if (arg->xscale > 0 && arg->x0 >= 0 && ((arg->x0 + arg->w*arg->xscale) >> FIXPREC) <= arg->src.width - 1) {
+        for (ssize_t j = 0; j < arg->h; j++) {
+            color_t *sptr = arg->src.data + MIN(MAX(0, (arg->y0 + j*arg->yscale) >> FIXPREC), arg->src.height - 1)*arg->sstride;
+            for (ssize_t i = 0; i < arg->w; i += 4) {
                 void *ptr = (char *)&arg->dst[j * arg->dstride + i];
-                size_t ix0 = arg->x0 + (i + 0)*arg->xscale;
-                size_t ix1 = arg->x0 + (i + 1)*arg->xscale;
-                size_t ix2 = arg->x0 + (i + 2)*arg->xscale;
-                size_t ix3 = arg->x0 + (i + 3)*arg->xscale;
+                ssize_t ix0 = (arg->x0 + (i + 0)*arg->xscale) >> FIXPREC;
+                ssize_t ix1 = (arg->x0 + (i + 1)*arg->xscale) >> FIXPREC;
+                ssize_t ix2 = (arg->x0 + (i + 2)*arg->xscale) >> FIXPREC;
+                ssize_t ix3 = (arg->x0 + (i + 3)*arg->xscale) >> FIXPREC;
                 const __m128i s = _mm_set_epi32(sptr[ix3], sptr[ix2], sptr[ix1], sptr[ix0]);
                 const __m128i d = _mm_load_si128(ptr);
                 _mm_store_si128(ptr, blend4(d, s));
             }
         }
     } else {
-        for (size_t j = 0; j < arg->h; j++) {
-            color_t *sptr = arg->src.data +
-                    (size_t)MIN(MAX(0, arg->y0 + j*arg->yscale),
-                    arg->src.height - 1)*arg->sstride;
-            for (size_t i = 0; i < arg->w; i += 4) {
+        for (ssize_t j = 0; j < arg->h; j++) {
+            color_t *sptr = arg->src.data + MIN(MAX(0, (arg->y0 + j*arg->yscale) >> FIXPREC), arg->src.height - 1)*arg->sstride;
+            for (ssize_t i = 0; i < arg->w; i += 4) {
                 void *ptr = &arg->dst[j * arg->dstride + i];
-                size_t ix0 = MAX(0, MIN(arg->x0 + (i + 0)*arg->xscale, arg->src.width - 1));
-                size_t ix1 = MAX(0, MIN(arg->x0 + (i + 1)*arg->xscale, arg->src.width - 1));
-                size_t ix2 = MAX(0, MIN(arg->x0 + (i + 2)*arg->xscale, arg->src.width - 1));
-                size_t ix3 = MAX(0, MIN(arg->x0 + (i + 3)*arg->xscale, arg->src.width - 1));
+                ssize_t ix0 = MAX(0, MIN((arg->x0 + (i + 0)*arg->xscale) >> FIXPREC, arg->src.width - 1));
+                ssize_t ix1 = MAX(0, MIN((arg->x0 + (i + 1)*arg->xscale) >> FIXPREC, arg->src.width - 1));
+                ssize_t ix2 = MAX(0, MIN((arg->x0 + (i + 2)*arg->xscale) >> FIXPREC, arg->src.width - 1));
+                ssize_t ix3 = MAX(0, MIN((arg->x0 + (i + 3)*arg->xscale) >> FIXPREC, arg->src.width - 1));
                 const __m128i s = _mm_set_epi32(sptr[ix3], sptr[ix2], sptr[ix1], sptr[ix0]);
                 const __m128i d = _mm_load_si128(ptr);
                 _mm_store_si128(ptr, blend4(d, s));
@@ -415,15 +414,15 @@ __attribute__((hot))
 static void do_blt_aligned_scaling_linear(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
-    for (size_t j = 0; j < arg->h; j++) {
-        for (size_t i = 0; i < arg->w; i += 4) {
+    for (ssize_t j = 0; j < arg->h; j++) {
+        for (ssize_t i = 0; i < arg->w; i += 4) {
             void *ptr = &arg->dst[j * arg->dstride + i];
             const __m128i d = _mm_load_si128(ptr);
             const __m128i s = _mm_set_epi32(
-                image_sample(arg->src, arg->x0 + (i + 3)*arg->xscale, arg->y0 + j*arg->yscale),
-                image_sample(arg->src, arg->x0 + (i + 2)*arg->xscale, arg->y0 + j*arg->yscale),
-                image_sample(arg->src, arg->x0 + (i + 1)*arg->xscale, arg->y0 + j*arg->yscale),
-                image_sample(arg->src, arg->x0 + (i + 0)*arg->xscale, arg->y0 + j*arg->yscale));
+                image_sample(arg->src, (arg->x0 + (i + 3)*arg->xscale), (arg->y0 + j*arg->yscale)),
+                image_sample(arg->src, (arg->x0 + (i + 2)*arg->xscale), (arg->y0 + j*arg->yscale)),
+                image_sample(arg->src, (arg->x0 + (i + 1)*arg->xscale), (arg->y0 + j*arg->yscale)),
+                image_sample(arg->src, (arg->x0 + (i + 0)*arg->xscale), (arg->y0 + j*arg->yscale)));
             _mm_store_si128(ptr, blend4(d, s));
         }
     }
@@ -432,16 +431,17 @@ static void do_blt_aligned_scaling_linear(void *varg) {
 
 void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode) {
     bool fastpath = srect.width == drect.width && srect.height == drect.height;
-    double xscale = srect.width/(double)drect.width;
-    double yscale = srect.height/(double)drect.height;
+
+    ssize_t xscale = ((ssize_t)srect.width << FIXPREC)/drect.width;
+    ssize_t yscale = ((ssize_t)srect.height << FIXPREC)/drect.height;
 
     drect.width = MIN(dst.width - drect.x, drect.width);
     drect.height = MIN(dst.height - drect.y, drect.height);
 
     color_t *sdata = __builtin_assume_aligned(src.data, CACHE_LINE);
     color_t *ddata = __builtin_assume_aligned(dst.data, CACHE_LINE);
-    size_t sstride = (src.width + 3) & ~3;
-    size_t dstride = (dst.width + 3) & ~3;
+    ssize_t sstride = (src.width + 3) & ~3;
+    ssize_t dstride = (dst.width + 3) & ~3;
 
     if (fastpath) {
             /* Fast path for aligned non-resizing blits */
@@ -470,8 +470,8 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                 };
                 submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
             } else {
-                size_t block = drect.height/nproc;
-                for (size_t i = 0; i < nproc; i++) {
+                ssize_t block = drect.height/nproc;
+                for (ssize_t i = 0; i < nproc; i++) {
                     struct do_blt_arg arg = {
                         block, drect.width & ~3, dstride, sstride,
                         &ddata[(drect.y + block*i)*dstride+drect.x],
@@ -480,7 +480,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                     submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
                 }
 
-                if (nproc*block != (size_t)drect.height) {
+                if (nproc*block != drect.height) {
                     struct do_blt_arg arg = {
                         drect.height - nproc*block, drect.width & ~3, dstride, sstride,
                         &ddata[(drect.y + block*nproc)*dstride+drect.x],
@@ -502,12 +502,12 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
     } else {
         if (LIKELY(drect.width + MIN(drect.x, 0) > 0 && drect.height + MIN(drect.y, 0) > 0)) {
             // Separate branches for better inlining...
-            double sx0 = srect.x;
+            ssize_t sx0 = srect.x << FIXPREC;
             if (drect.x & 3 && drect.x > 0) {
                 struct do_blt_scale_arg arg = {
                     drect.height + MIN(drect.y, 0), 4 - (drect.x & 3), dstride, sstride,
                     &ddata[MAX(drect.y, 0) * dstride + drect.x], src,
-                    srect.x, srect.y - MIN(drect.y, 0)*yscale, xscale, yscale,
+                    sx0, (srect.y << FIXPREC) - MIN(drect.y, 0)*yscale, xscale, yscale,
                 };
                 submit_work(mode == sample_nearest ? do_blt_unaligned_scaling_nearest :
                             do_blt_unaligned_scaling_linear, &arg, sizeof arg);
@@ -520,32 +520,32 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                 drect.x = 0;
             }
 
-            if (drect.height*drect.width < 256*(int)nproc) {
+            if (drect.height*drect.width < 256*nproc) {
                     struct do_blt_scale_arg arg = {
                         drect.height + MIN(drect.y, 0), drect.width & ~3, dstride, sstride,
                         &ddata[MAX(drect.y, 0) * dstride + drect.x], src,
-                        sx0, srect.y - MIN(drect.y, 0)*yscale, xscale, yscale,
+                        sx0, (srect.y << FIXPREC) - MIN(drect.y, 0)*yscale, xscale, yscale,
                     };
                     submit_work(do_blt_aligned_scaling_nearest, &arg, sizeof arg);
                 submit_work(mode == sample_nearest ? do_blt_aligned_scaling_nearest :
                             do_blt_aligned_scaling_linear, &arg, sizeof arg);
             } else {
-                size_t block = (drect.height - MAX(-drect.y, 0))/nproc;
-                for (size_t i = 0; i < nproc; i++) {
+                ssize_t block = (drect.height - MAX(-drect.y, 0))/nproc;
+                for (ssize_t i = 0; i < nproc; i++) {
                     struct do_blt_scale_arg arg = {
                         block, drect.width & ~3, dstride, sstride,
                         &ddata[(MAX(drect.y, 0) + i*block) * dstride + drect.x], src,
-                        sx0, srect.y + (i*block + MAX(-drect.y, 0))*yscale, xscale, yscale,
+                        sx0, (srect.y << FIXPREC) + (i*block + MAX(-drect.y, 0))*yscale, xscale, yscale,
                     };
                     submit_work(mode == sample_nearest ? do_blt_aligned_scaling_nearest :
                                 do_blt_aligned_scaling_linear, &arg, sizeof arg);
                 }
 
-                if (nproc*block != (size_t)drect.height) {
+                if (nproc*block != drect.height) {
                     struct do_blt_scale_arg arg = {
                         drect.height + MIN(drect.y, 0) - block*nproc, drect.width & ~3, dstride, sstride,
                         &ddata[(MAX(drect.y, 0) + nproc*block) * dstride + drect.x], src,
-                        sx0, srect.y + (nproc*block+MAX(-drect.y, 0))*yscale, xscale, yscale,
+                        sx0, (srect.y << FIXPREC) + (nproc*block+MAX(-drect.y, 0))*yscale, xscale, yscale,
                     };
                     submit_work(mode == sample_nearest ? do_blt_aligned_scaling_nearest :
                                 do_blt_aligned_scaling_linear, &arg, sizeof arg);
@@ -556,7 +556,7 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
                 struct do_blt_scale_arg arg = {
                     drect.height + MIN(drect.y, 0), drect.width - (drect.width & ~3), dstride, sstride,
                     &ddata[MAX(drect.y, 0) * dstride + drect.x + (drect.width & ~3)], src,
-                    sx0 + xscale*(drect.width & ~3), srect.y - MIN(drect.y, 0)*yscale, xscale, yscale,
+                    sx0 + xscale*(drect.width & ~3), (srect.y << FIXPREC) - MIN(drect.y, 0)*yscale, xscale, yscale,
                 };
                 submit_work(mode == sample_nearest ? do_blt_unaligned_scaling_nearest :
                             do_blt_unaligned_scaling_linear, &arg, sizeof arg);

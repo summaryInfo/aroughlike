@@ -180,8 +180,8 @@ int64_t tick(struct timespec current) {
 
         // Move camera towards player
 
-        double x_speed_scale = MIN(ctx.backbuf.width/5, 512)/ctx.scale;
-        double y_speed_scale = MIN(ctx.backbuf.height/4, 512)/ctx.scale;
+        double x_speed_scale = MIN(ctx.backbuf.width/5, 512)/MAX(ctx.scale, 2);
+        double y_speed_scale = MIN(ctx.backbuf.height/4, 512)/MAX(ctx.scale, 2);
         int32_t cam_dx = -pow((state.camera_x + (state.player.x*TILE_WIDTH +
                 TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * frame_delta / (double)(SEC/TPS) / 12;
         int32_t cam_dy = -pow((state.camera_y + (state.player.y*TILE_HEIGHT +
