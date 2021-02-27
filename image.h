@@ -8,6 +8,8 @@
 #include <math.h>
 #include <stdint.h>
 
+#define FIXPREC 16
+
 struct image {
     int16_t width;
     int16_t height;
@@ -39,22 +41,21 @@ inline static color_t mk_color(uint8_t r, uint8_t g, uint8_t b, uint8_t a) {
 
 __attribute__((always_inline))
 inline static color_t color_blend(color_t dstc, color_t srcc) {
-    double alpha = 1 - color_a(srcc)/255.;
-
+    double alpha = 255 - color_a(srcc);
     return mk_color(
-            color_r(dstc)*alpha + color_r(srcc),
-            color_g(dstc)*alpha + color_g(srcc),
-            color_b(dstc)*alpha + color_b(srcc),
-            color_a(dstc)*alpha + color_a(srcc));
+            alpha*color_r(dstc)/255 + color_r(srcc),
+            alpha*color_g(dstc)/255 + color_g(srcc),
+            alpha*color_b(dstc)/255 + color_b(srcc),
+            alpha*color_a(dstc)/255 + color_a(srcc));
 }
 
 __attribute__((always_inline))
-inline static color_t color_mix(color_t dstc, color_t srcc, double alpha) {
+inline static color_t color_mix(color_t dstc, color_t srcc, ssize_t fixalpha) {
     return mk_color(
-            color_r(dstc)*(1. - alpha) + color_r(srcc)*alpha,
-            color_g(dstc)*(1. - alpha) + color_g(srcc)*alpha,
-            color_b(dstc)*(1. - alpha) + color_b(srcc)*alpha,
-            color_a(dstc)*(1. - alpha) + color_a(srcc)*alpha);
+            (color_r(dstc)*((1LL << FIXPREC) - 1 - fixalpha) + color_r(srcc)*fixalpha) >> FIXPREC,
+            (color_g(dstc)*((1LL << FIXPREC) - 1 - fixalpha) + color_g(srcc)*fixalpha) >> FIXPREC,
+            (color_b(dstc)*((1LL << FIXPREC) - 1 - fixalpha) + color_b(srcc)*fixalpha) >> FIXPREC,
+            (color_a(dstc)*((1LL << FIXPREC) - 1 - fixalpha) + color_a(srcc)*fixalpha) >> FIXPREC);
 }
 
 void image_draw_rect(struct image im, struct rect rect, color_t fg);

@@ -29,8 +29,6 @@
 #pragma GCC diagnostic pop
 
 
-#define FIXPREC 16
-
 struct image create_empty_image(int16_t width, int16_t height) {
     size_t stride = (width + 3) & ~3;
     color_t *restrict data = aligned_alloc(CACHE_LINE, stride*height*sizeof(color_t));
@@ -207,7 +205,7 @@ void image_draw_rect(struct image im, struct rect rect, color_t fg) {
             submit_work(do_fill_aligned, &arg, sizeof arg);
         } else {
             size_t block = rect.height/nproc;
-            for (size_t i = 0; i < nproc; i++) {
+            for (ssize_t i = 0; i < nproc; i++) {
                 struct do_fill_arg arg = {
                     &data[(rect.y + i*block) * stride + rect.x],
                     fg, block, rect.width & ~3, stride
@@ -257,26 +255,23 @@ inline static __m128i blend4(__m128i under, __m128i over) {
 }
 
 __attribute__((always_inline))
-inline static color_t image_sample(struct image src, double x, double y) {
+inline static color_t image_sample(struct image src, ssize_t x, ssize_t y) {
     // Always clamp to border
     // IDK why I have implemented this...
 
-    x = MAX(0, x), y = MAX(0, y);
-
-    ssize_t x0 = floor(x), y0 = floor(y);
-    size_t sstride = (src.width + 3) & ~3;
-    x0 = MIN(x0, src.width - 1);
-    y0 = MIN(y0, src.height - 1);
+    ssize_t sstride = (src.width + 3) & ~3;
+    ssize_t x0 = MIN(x >> FIXPREC, src.width - 1);
+    ssize_t y0 = MIN(y >> FIXPREC, src.height - 1);
 
     color_t *data = __builtin_assume_aligned(src.data, CACHE_LINE);
 
-    ssize_t x1 = ceil(x), y1 = ceil(y)*sstride;
+    ssize_t x1 = MIN((x + (1LL << FIXPREC) - 1) >> FIXPREC, src.width - 1);
+    ssize_t y1 = MIN((y + (1LL << FIXPREC) - 1) >> FIXPREC, src.height - 1);
+    double valpha = (y & ((1LL << FIXPREC) - 1))/(double)(1LL << FIXPREC);
+    double halpha = (x & ((1LL << FIXPREC) - 1))/(double)(1LL << FIXPREC);
 
-    x1 = MIN(x1, src.width - 1);
-    y1 = MIN(y1, src.width*(src.height - 1));
-
-    double valpha = y - y0, halpha = x - x0;
     y0 *= sstride;
+    y1 *= sstride;
 
     color_t v0 = color_mix(data[x0+y0], data[x1+y0], halpha);
     color_t v1 = color_mix(data[x0+y1], data[x1+y1], halpha);
