@@ -194,8 +194,10 @@ int64_t tick(struct timespec current) {
         double old_px = state.player.x;
         double old_py = state.player.y;
 
-        double dx = 2*(state.keys.right - state.keys.left) * tick_delta / (double)(SEC/TPS);
-        double dy = 2*(state.keys.backward - state.keys.forward) * tick_delta / (double)(SEC/TPS);
+        double speed = state.keys.right - state.keys.left +
+                state.keys.backward - state.keys.forward == 2 ? sqrt(2) : 2;
+        double dx = speed*(state.keys.right - state.keys.left) * tick_delta / (double)(SEC/TPS);
+        double dy = speed*(state.keys.backward - state.keys.forward) * tick_delta / (double)(SEC/TPS);
 
         state.player.x += dx;
         state.player.y += dy;
