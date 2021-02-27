@@ -110,9 +110,11 @@ void redraw(struct timespec current) {
     /* Draw player */
     int16_t player_x = map_x + ctx.scale*state.player.x;
     int16_t player_y = map_y + ctx.scale*state.player.y;
+    tile_t player = state.player.tile;
+    if (TIMEDIFF(state.last_damage, current) < SEC/2)
+        player += (TILE_ID(player)/4 >= 6 ? -4 : +4);
 
-    tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(state.player.tile)],
-                      TILE_ID(state.player.tile), player_x, player_y, ctx.scale);
+    tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, ctx.scale);
 
     /* Draw lives */
 
