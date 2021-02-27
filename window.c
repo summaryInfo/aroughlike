@@ -383,7 +383,7 @@ static void run(void) {
                 ctx.want_redraw = 0;
                 ctx.force_redraw = 0;
 
-#if 1 // Performance debug reporting
+#if 0 // Performance debug reporting
                 struct timespec end;
                 clock_gettime(CLOCK_TYPE, &end);
                 int64_t dt = TIMEDIFF(cur, end);
