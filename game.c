@@ -52,8 +52,8 @@ struct gamestate {
     char *mapchars;
     size_t mapchars_size;
 
-    int16_t camera_x;
-    int16_t camera_y;
+    double camera_x;
+    double camera_y;
 
     struct player {
         double x;
@@ -179,8 +179,13 @@ int64_t tick(struct timespec current) {
 
         double x_speed_scale = MIN(ctx.backbuf.width/5, 512)/MAX(ctx.scale, 2);
         double y_speed_scale = MIN(ctx.backbuf.height/4, 512)/MAX(ctx.scale, 2);
-        int32_t cam_dx = -pow((state.camera_x + (state.player.x + TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * tick_delta / (double)(SEC/TPS) / 12;
-        int32_t cam_dy = -pow((state.camera_y + (state.player.y + TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * tick_delta / (double)(SEC/TPS) / 12;
+
+        double cam_dx = -pow((state.camera_x + (state.player.x + TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * tick_delta / (double)(SEC/TPS) / 12;
+        double cam_dy = -pow((state.camera_y + (state.player.y + TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * tick_delta / (double)(SEC/TPS) / 12;
+
+        if (fabs(cam_dx) < .8) cam_dx = 0;
+        if (fabs(cam_dy) < .8) cam_dy = 0;
+
         state.camera_x += MAX(-ctx.dpi, MIN(cam_dx, ctx.dpi));
         state.camera_y += MAX(-ctx.dpi, MIN(cam_dy, ctx.dpi));
 
@@ -197,6 +202,8 @@ int64_t tick(struct timespec current) {
 
         int32_t px = (state.player.x + TILE_WIDTH/2)/TILE_WIDTH;
         int32_t py = (state.player.y + TILE_HEIGHT/2)/TILE_HEIGHT;
+
+        // Handle collisions
 
         for (int32_t y = -1; y <= 1; y++) {
             double y1 = (py + y)*TILE_WIDTH;
