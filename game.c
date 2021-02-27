@@ -390,18 +390,14 @@ tile_t decode_floor(int x, int y) {
     char top = get_cell(x, y - 1);
 
     if (top == WALL) {
-        if (left == WALL && right != WALL)
-            return MKTILE(0, 1*10+1);
-        if (left != WALL && right == WALL)
-            return MKTILE(0, 1*10+4);
+        if (left == WALL && right != WALL) return MKTILE(0, 1*10+1);
+        if (left != WALL && right == WALL) return MKTILE(0, 1*10+4);
         return MKTILE(0, 1*10 + 2+(rand() & 1));
     }
 
     if (bottom == WALL) {
-        if (left == WALL && right != WALL)
-            return MKTILE(0, 3*10+1);
-        if (left != WALL && right == WALL)
-            return MKTILE(0, 3*10+4);
+        if (left == WALL && right != WALL) return MKTILE(0, 3*10+1);
+        if (left != WALL && right == WALL) return MKTILE(0, 3*10+4);
         return MKTILE(0, 3*10 + 2+(rand() & 1));
     }
 
