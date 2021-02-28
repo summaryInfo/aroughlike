@@ -140,10 +140,16 @@ void redraw(struct timespec current) {
     }
 
     /* Draw lives */
-    for (int i = 0; i < state.player.lives; i++) {
-        int16_t px = 20 + (state.player.lives - i)*TILE_WIDTH*ctx.interface_scale/2;
+    for (int i = 0; i < (state.player.lives + 1)/2; i ++) {
+        int16_t px = 20 + ((state.player.lives + 1)/2 - i)*TILE_WIDTH*ctx.interface_scale/2;
         int16_t py = 24 - 8*(i & 1) ;
-        tile_t lives_tile = inv_rest > 0 ? TILE_IPOISON_STATIC : TILE_POISON_STATIC;
+        tile_t lives_tile;
+        if ((state.player.lives & 1) & !i) {
+            px -= ctx.interface_scale;
+            lives_tile = inv_rest > 0 ? TILE_SIPOISON_STATIC : TILE_SPOISON_STATIC;
+        } else {
+            lives_tile = inv_rest > 0 ? TILE_IPOISON_STATIC : TILE_POISON_STATIC;
+        }
         tileset_queue_tile(ctx.backbuf, state.tilesets[TILESET_ID(lives_tile)],
                            TILE_ID(lives_tile), px, py, ctx.interface_scale);
         drain_work();
@@ -151,10 +157,10 @@ void redraw(struct timespec current) {
 
 
     if (state.state == s_win) /* Draw win screen */ {
-        image_fill(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
+        image_queue_fill(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
                         ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFF00FF00);
     } else if (state.state == s_game_over) /* Draw game over message */ {
-        image_fill(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
+        image_queue_fill(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
                         ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFFFF0000);
     }
 }
