@@ -461,12 +461,16 @@ tile_t decode_wall_decoration(int x, int y) {
         }
     }
 
-    if (cur == '.') {
+    if (cur == FLOOR) {
         int r = rand();
         if (r % 20 == 3) {
-            switch((r/20) % 7) {
-            case 0: return MKTILE(TILESET_ANIMATED, 5*4 + 2); /* Torch */
-            case 1: return MKTILE(TILESET_ANIMATED, 4*4 + 2); /* Torch */
+            switch((r/20) % 17) {
+            case 0:
+            case 1: return MKTILE(TILESET_ANIMATED, 5*4 + 2); /* Torch 1 */
+            case 2:
+            case 3: return MKTILE(TILESET_ANIMATED, 4*4 + 2); /* Torch 2 */
+            case 4: return MKTILE(TILESET_STATIC, 10*6 + 8); /* Bones 1 */
+            case 5: return MKTILE(TILESET_STATIC, 10*7 + 7); /* Bones 2 */
             default:;
             }
         }
