@@ -26,11 +26,12 @@
 
 #define TILE_WIDTH 16
 #define TILE_HEIGHT 16
-#define NTILESETS 3
+#define NTILESETS 4
 
 #define TILESET_STATIC 0
 #define TILESET_ANIMATED 1
 #define TILESET_ENTITIES 2
+#define TILESET_ASCII 3
 
 #define TILE_VOID MKTILE(TILESET_STATIC, 10*7+8)
 #define TILE_FLOOR MKTILE(TILESET_STATIC, 10*0+6)
@@ -60,6 +61,9 @@
 
 struct gamestate {
     struct tilemap *map;
+    struct tilemap *death_screen;
+    struct tilemap *win_screen;
+    struct tilemap *greet_screen;
     struct tileset *tilesets[NTILESETS];
     char *mapchars;
     size_t mapchars_size;
@@ -79,9 +83,12 @@ struct gamestate {
 
     enum state {
         s_normal,
+        s_greet,
         s_win,
         s_game_over,
     } state;
+
+    struct tilemap *screens[s_game_over + 1];
 
     int level;
 
@@ -140,7 +147,7 @@ void redraw(struct timespec current) {
     }
 
     /* Draw lives */
-    for (int i = 0; i < (state.player.lives + 1)/2; i ++) {
+    for (int i = 0; i < (state.player.lives + 1)/2; i++) {
         int16_t px = 20 + ((state.player.lives + 1)/2 - i)*TILE_WIDTH*ctx.interface_scale/2;
         int16_t py = 24 - 8*(i & 1) ;
         tile_t lives_tile;
@@ -155,14 +162,14 @@ void redraw(struct timespec current) {
         drain_work();
     }
 
-
-    if (state.state == s_win) /* Draw win screen */ {
-        image_queue_fill(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
-                        ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFF00FF00);
-    } else if (state.state == s_game_over) /* Draw game over message */ {
-        image_queue_fill(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
-                        ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFFFF0000);
+    struct tilemap *screen_to_draw = state.screens[state.state];
+    if (screen_to_draw) {
+        int16_t sx = ctx.backbuf.width/2 - screen_to_draw->width*screen_to_draw->tile_width*screen_to_draw->scale/2;
+        int16_t sy = ctx.backbuf.height/2 - screen_to_draw->height*screen_to_draw->tile_height*screen_to_draw->scale/2;
+        tilemap_queue_draw(ctx.backbuf, screen_to_draw, sx, sy);
     }
+
+    drain_work();
 }
 
 inline static char get_cell(int x, int y) {
@@ -228,6 +235,10 @@ int64_t tick(struct timespec current) {
             // Anitmation plays
             // at conanstant rate
             tilemap_animation_tick(state.map);
+            if (state.screens[state.state]) {
+                tilemap_animation_tick(state.screens[state.state]);
+                tilemap_refresh(state.screens[state.state]);
+            }
             struct tile *tile = &state.tilesets[TILESET_ID(state.player.tile)]->tiles[TILE_ID(state.player.tile)];
             state.player.tile = MKTILE(TILESET_ID(state.player.tile), tile->next_frame);
         }
@@ -254,92 +265,95 @@ int64_t tick(struct timespec current) {
         state.camera_x += MAX(-ctx.dpi, MIN(cam_dx, ctx.dpi));
         state.camera_y += MAX(-ctx.dpi, MIN(cam_dy, ctx.dpi));
 
-        // Move player
 
         double old_px = state.player.x;
         double old_py = state.player.y;
 
-        double speed = state.keys.right - state.keys.left +
-                state.keys.backward - state.keys.forward == 2 ? sqrt(2) : 2;
-        double dx = speed*(state.keys.right - state.keys.left) * tick_delta / (double)(SEC/TPS);
-        double dy = speed*(state.keys.backward - state.keys.forward) * tick_delta / (double)(SEC/TPS);
+        if (state.state == s_normal) {
+            // Move player
 
-        state.player.x += dx;
-        state.player.y += dy;
+            double speed = state.keys.right - state.keys.left +
+                    state.keys.backward - state.keys.forward == 2 ? sqrt(2) : 2;
+            double dx = speed*(state.keys.right - state.keys.left) * tick_delta / (double)(SEC/TPS);
+            double dy = speed*(state.keys.backward - state.keys.forward) * tick_delta / (double)(SEC/TPS);
 
-        int32_t px = (state.player.x + TILE_WIDTH/2)/TILE_WIDTH;
-        int32_t py = (state.player.y + TILE_HEIGHT/2)/TILE_HEIGHT;
+            state.player.x += dx;
+            state.player.y += dy;
 
-        // Handle collisions
+            int32_t px = (state.player.x + TILE_WIDTH/2)/TILE_WIDTH;
+            int32_t py = (state.player.y + TILE_HEIGHT/2)/TILE_HEIGHT;
 
-        for (int32_t y = -1; y <= 1; y++) {
-            for (int32_t x = -1; x <= 1; x++) {
-                double x0 = state.player.x, y0 = state.player.y;
-                char cell = get_cell(px + x, py + y);
-                struct rect bb = get_bounding_box_for(cell, px + x, py + y);
-                /* Signed depths for x and y axes.
-                 * They are equal to the distance player
-                 * should be moved to not intersect with
-                 * the bounding box.
-                 */
-                double hy = ((y0 < bb.y ? MAX(0, y0 + TILE_HEIGHT - bb.y) : MIN(0, y0 - bb.y - bb.height)));
-                double hx = ((x0 < bb.x ? MAX(0, x0 + TILE_WIDTH - bb.x) : MIN(0, x0 - bb.x - bb.width)));
-                switch (cell) {
-                case WALL:
-                    if (fabs(hx) < fabs(hy)) state.player.x -= hx;
-                    else state.player.y -= hy;
-                    break;
-                case POISON:
-                case IPOISON:
-                case SPOISON:
-                case SIPOISON:
-                    if (fmin(fabs(hx), fabs(hy)) > 0) {
-                        if (cell == POISON) state.player.lives += 2;
-                        else if (cell == SPOISON) state.player.lives++;
-                        else {
-                            int64_t inc = (1 + (cell == IPOISON))*INV_DUR;
-                            state.player.inv_start = current;
-                            if (TIMEDIFF(state.player.inv_end, current) > 0)
-                                state.player.inv_end = current;
-                            TIMEINC(state.player.inv_end, inc);
-                        }
-                        set_cell(px + x, py + y, FLOOR);
-                        tilemap_set_tile(state.map, px+x, py+y, 1, NOTILE);
-                        ctx.want_redraw = 1;
-                    }
-                    break;
-                case VOID:
-                    if (fmin(fabs(hx), fabs(hy)) > 0) {
-                        state.state = s_game_over;
-                        ctx.want_redraw = 1;
-                    }
-                    break;
-                case TRAP:
-                    if (fmin(fabs(hx), fabs(hy)) > 0) {
-                        bool trap_is_active = tilemap_get_tile(state.map, px+x, py+y, 0) != TILE_TRAP;
-                        bool damaged_recently = TIMEDIFF(state.last_damage, current) < SEC;
-                        bool invincible = TIMEDIFF(state.player.inv_end, current) < 0;
-                        if (trap_is_active && !damaged_recently && !invincible) {
-                            state.player.lives -= 2;
-                            if (state.player.lives <= 0)
-                                state.state = s_game_over;
-                            state.last_damage = current;
+            // Handle collisions
+
+            for (int32_t y = -1; y <= 1; y++) {
+                for (int32_t x = -1; x <= 1; x++) {
+                    double x0 = state.player.x, y0 = state.player.y;
+                    char cell = get_cell(px + x, py + y);
+                    struct rect bb = get_bounding_box_for(cell, px + x, py + y);
+                    /* Signed depths for x and y axes.
+                     * They are equal to the distance player
+                     * should be moved to not intersect with
+                     * the bounding box.
+                     */
+                    double hy = ((y0 < bb.y ? MAX(0, y0 + TILE_HEIGHT - bb.y) : MIN(0, y0 - bb.y - bb.height)));
+                    double hx = ((x0 < bb.x ? MAX(0, x0 + TILE_WIDTH - bb.x) : MIN(0, x0 - bb.x - bb.width)));
+                    switch (cell) {
+                    case WALL:
+                        if (fabs(hx) < fabs(hy)) state.player.x -= hx;
+                        else state.player.y -= hy;
+                        break;
+                    case POISON:
+                    case IPOISON:
+                    case SPOISON:
+                    case SIPOISON:
+                        if (fmin(fabs(hx), fabs(hy)) > 0) {
+                            if (cell == POISON) state.player.lives += 2;
+                            else if (cell == SPOISON) state.player.lives++;
+                            else {
+                                int64_t inc = (1 + (cell == IPOISON))*INV_DUR;
+                                state.player.inv_start = current;
+                                if (TIMEDIFF(state.player.inv_end, current) > 0)
+                                    state.player.inv_end = current;
+                                TIMEINC(state.player.inv_end, inc);
+                            }
+                            set_cell(px + x, py + y, FLOOR);
+                            tilemap_set_tile(state.map, px+x, py+y, 1, NOTILE);
                             ctx.want_redraw = 1;
                         }
+                        break;
+                    case VOID:
+                        if (fmin(fabs(hx), fabs(hy)) > 0) {
+                            state.state = s_game_over;
+                            ctx.want_redraw = 1;
+                        }
+                        break;
+                    case TRAP:
+                        if (fmin(fabs(hx), fabs(hy)) > 0) {
+                            bool trap_is_active = tilemap_get_tile(state.map, px+x, py+y, 0) != TILE_TRAP;
+                            bool damaged_recently = TIMEDIFF(state.last_damage, current) < SEC;
+                            bool invincible = TIMEDIFF(state.player.inv_end, current) < 0;
+                            if (trap_is_active && !damaged_recently && !invincible) {
+                                state.player.lives -= 2;
+                                if (state.player.lives <= 0)
+                                    state.state = s_game_over;
+                                state.last_damage = current;
+                                ctx.want_redraw = 1;
+                            }
+                        }
+                        break;
+                    case EXIT:
+                        if (fmin(fabs(hx), fabs(hy)) > 0) {
+                            next_level();
+                            ctx.want_redraw = 1;
+                        }
+                        break;
                     }
-                    break;
-                case EXIT:
-                    if (fmin(fabs(hx), fabs(hy)) > 0) {
-                        next_level();
-                        ctx.want_redraw = 1;
-                    }
-                    break;
                 }
             }
         }
 
         state.last_tick = current;
-            tick_time = TPS/SEC;
+        tick_time = TPS/SEC;
         ctx.tick_early = 0;
 
         bool camera_moved = cam_dx || cam_dy;
@@ -367,6 +381,12 @@ void reset_game(void) {
 /* This function is called on every key press */
 void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
     xcb_keysym_t ksym = get_keysym(kc, st);
+
+    if (ksym < 0xFF && state.state == s_greet) {
+        ctx.want_redraw = 1;
+        state.state = s_normal;
+    }
+
     //warn("Key %x (%c) %s", ksym, ksym, pressed ? "down" : "up");
     switch (ksym) {
     case XK_R: // Restart game
@@ -421,24 +441,24 @@ tile_t decode_wall(int x, int y) {
     // But lets try to get the best approximation
 
     if (left == WALL && bottom == WALL && bottom_left == VOID)
-        return MKTILE(0, 5*10 + 3 + 2*(rand()&1));
+        return MKTILE(TILESET_STATIC, 5*10 + 3 + 2*(rand()&1));
     if (right == WALL && bottom == WALL && bottom_right == VOID)
-        return MKTILE(0, 5*10 + 4*(rand()&1));
+        return MKTILE(TILESET_STATIC, 5*10 + 4*(rand()&1));
 
-    if (bottom != WALL && bottom != VOID) return MKTILE(0, 1 + (rand()&3));
-    if (left != WALL && left != VOID) return MKTILE(0, 5 + 10*(rand()&3));
-    if (right != WALL && right != VOID) return MKTILE(0, 10*(rand()&3));
+    if (bottom != WALL && bottom != VOID) return MKTILE(TILESET_STATIC, 1 + (rand()&3));
+    if (left != WALL && left != VOID) return MKTILE(TILESET_STATIC, 5 + 10*(rand()&3));
+    if (right != WALL && right != VOID) return MKTILE(TILESET_STATIC, 10*(rand()&3));
 
     if (bottom == VOID) {
-        if (left == VOID && right == WALL) return MKTILE(0, 4*10 + 0);
-        else if (left == WALL && right == VOID) return MKTILE(0, 4*10 + 5);
-        return MKTILE(0, 4*10 + 1 + (rand()&3));
+        if (left == VOID && right == WALL) return MKTILE(TILESET_STATIC, 4*10 + 0);
+        else if (left == WALL && right == VOID) return MKTILE(TILESET_STATIC, 4*10 + 5);
+        return MKTILE(TILESET_STATIC, 4*10 + 1 + (rand()&3));
     }
 
-    if (left == WALL && right == VOID) return MKTILE(0, 5 + 10*(rand()&3));
-    if (left == VOID && right == WALL) return MKTILE(0, 10*(rand()&3));
+    if (left == WALL && right == VOID) return MKTILE(TILESET_STATIC, 5 + 10*(rand()&3));
+    if (left == VOID && right == WALL) return MKTILE(TILESET_STATIC, 10*(rand()&3));
 
-    return MKTILE(0, 6*10+9);
+    return MKTILE(TILESET_STATIC, 6*10+9);
 }
 
 tile_t decode_wall_decoration(int x, int y) {
@@ -487,21 +507,21 @@ tile_t decode_floor(int x, int y) {
     char top = get_cell(x, y - 1);
 
     if (top == WALL) {
-        if (left == WALL && right != WALL) return MKTILE(0, 1*10+1);
-        if (left != WALL && right == WALL) return MKTILE(0, 1*10+4);
-        return MKTILE(0, 1*10 + 2+(rand() & 1));
+        if (left == WALL && right != WALL) return MKTILE(TILESET_STATIC, 1*10+1);
+        if (left != WALL && right == WALL) return MKTILE(TILESET_STATIC, 1*10+4);
+        return MKTILE(TILESET_STATIC, 1*10 + 2+(rand() & 1));
     }
 
     if (bottom == WALL) {
-        if (left == WALL && right != WALL) return MKTILE(0, 3*10+1);
-        if (left != WALL && right == WALL) return MKTILE(0, 3*10+4);
-        return MKTILE(0, 3*10 + 2+(rand() & 1));
+        if (left == WALL && right != WALL) return MKTILE(TILESET_STATIC, 3*10+1);
+        if (left != WALL && right == WALL) return MKTILE(TILESET_STATIC, 3*10+4);
+        return MKTILE(TILESET_STATIC, 3*10 + 2+(rand() & 1));
     }
 
-    if (left == WALL) return MKTILE(0, 2*10 + 1);
-    if (right == WALL) return MKTILE(0, 2*10 + 4);
+    if (left == WALL) return MKTILE(TILESET_STATIC, 2*10 + 1);
+    if (right == WALL) return MKTILE(TILESET_STATIC, 2*10 + 4);
 
-    return MKTILE(0, (rand() % 3)*10 + (rand() & 3) + 6);
+    return MKTILE(TILESET_STATIC, (rand() % 3)*10 + (rand() & 3) + 6);
 }
 
 
@@ -622,6 +642,94 @@ format_error:
     state.camera_y = state.camera_x = 50*ctx.scale;
 }
 
+#define MBOX_WIDTH 20
+#define MBOX_HEIGHT 8
+
+struct tilemap *create_screen(size_t width, size_t height) {
+    struct tilemap *map  = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
+    for (size_t y = 0; y < height; y++) {
+        for (size_t x = 0; x < width; x++) {
+            tile_t tile = NOTILE;
+            if (!y) {
+                if (!x) tile = MKTILE(TILESET_STATIC, 1*10+1);
+                else if (x == width - 1) tile = MKTILE(TILESET_STATIC, 1*10+4);
+                else tile = MKTILE(TILESET_STATIC, 1*10 + 2+(rand() & 1));
+            } else if (y == height - 1) {
+                if (!x) tile = MKTILE(TILESET_STATIC, 3*10+1);
+                else if (x == width - 1) tile = MKTILE(TILESET_STATIC, 3*10+4);
+                else tile = MKTILE(TILESET_STATIC, 3*10 + 2+(rand() & 1));
+            } else {
+                if (!x) tile = MKTILE(TILESET_STATIC, 2*10 + 1);
+                else if (x == width - 1) tile = MKTILE(TILESET_STATIC, 2*10 + 4);
+                else tile = MKTILE(TILESET_STATIC, (rand() % 3)*10 + (rand() & 3) + 6);
+            }
+            tilemap_set_tile(map, x, y, 0, tile);
+        }
+    }
+    tilemap_set_scale(map, ctx.interface_scale/2);
+    return map;
+}
+
+void draw_message(struct tilemap *map, size_t x, size_t y, const char *message) {
+    size_t n = MIN(map->width - x, strlen(message));
+    for (size_t i = 0; i < n; i++) {
+        tile_t ch = MKTILE(TILESET_ASCII, message[i]);
+        tilemap_set_tile(map, x + i, y, 2, ch);
+    }
+}
+
+
+static struct tilemap *create_death_screen(void) {
+    struct tilemap *map = create_screen(MBOX_WIDTH, MBOX_HEIGHT);
+    draw_message(map, 6, 2, "YOU DIED");
+    draw_message(map, 1, 3, "Press R to restart");
+    draw_message(map, 3, 4, "or ESC to exit");
+    for (size_t y = 0; y < map->height; y++) {
+        for (size_t x = 0; x < map->width; x++) {
+            int r = rand();
+            if (r/2 % 7 == 0) {
+                tilemap_set_tile(map, x, y, 1,
+                        (r & 1 ? MKTILE(TILESET_STATIC, 10*6 + 8) :
+                        MKTILE(TILESET_STATIC, 10*7 + 7)));
+            }
+
+        }
+    }
+    tilemap_refresh(map);
+    return map;
+}
+
+static struct tilemap *create_win_screen(void) {
+    struct tilemap *map = create_screen(MBOX_WIDTH, MBOX_HEIGHT);
+    draw_message(map, 6, 2, "YOU WON");
+    tilemap_set_tile(map, 5, 2, 1, MKTILE(TILESET_ANIMATED, 6*4 + 2));
+    tilemap_set_tile(map, 13, 2, 1, MKTILE(TILESET_ANIMATED, 6*4 + 2));
+    tilemap_set_tile(map, 0, 0, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    tilemap_set_tile(map, MBOX_WIDTH - 1, 0, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    tilemap_set_tile(map, 0, MBOX_HEIGHT - 1, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    tilemap_set_tile(map, MBOX_WIDTH - 1, MBOX_HEIGHT - 1, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    draw_message(map, 2, 3, "Congratulations!");
+    draw_message(map, 1, 4, "Press R to restart");
+    draw_message(map, 3, 5, "or ESC to exit");
+    tilemap_refresh(map);
+    return map;
+}
+
+static struct tilemap *create_greet_screen(void) {
+    struct tilemap *map = create_screen(MBOX_WIDTH, MBOX_HEIGHT);
+    tilemap_set_tile(map, 0, 0, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    tilemap_set_tile(map, MBOX_WIDTH - 1, 0, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    tilemap_set_tile(map, 0, MBOX_HEIGHT - 1, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    tilemap_set_tile(map, MBOX_WIDTH - 1, MBOX_HEIGHT - 1, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    tilemap_set_tile(map, 4, 2, 1, MKTILE(TILESET_STATIC, 10*6+6));
+    tilemap_set_tile(map, 15, 2, 1, MKTILE(TILESET_STATIC, 10*6+7));
+    draw_message(map, 5, 2, "GREETINGS!");
+    draw_message(map, 11, 4, "ESC wR");
+    draw_message(map, 14, 5, "asd");
+    tilemap_refresh(map);
+    return map;
+}
+
 struct tileset_desc {
     const char *path;
     size_t x, y;
@@ -664,6 +772,7 @@ void init(void) {
         {"data/tiles.png", 10, 10, 0, TILESET_STATIC},
         {"data/ani.png", 4, 27, 1, TILESET_ANIMATED},
         {"data/ent.png", 4, 14, 1, TILESET_ENTITIES},
+        {"data/ascii.png", 16, 16, 0, TILESET_ASCII},
     };
 
     for (size_t i = 0; i < NTILESETS; i++) {
@@ -672,10 +781,18 @@ void init(void) {
 
     drain_work();
     reset_game();
+
+    state.screens[s_greet] = create_greet_screen();
+    state.screens[s_game_over] = create_death_screen();
+    state.screens[s_win] = create_win_screen();
+    state.state = s_greet;
 }
 
 void cleanup(void) {
     free_tilemap(state.map);
+    free_tilemap(state.screens[s_greet]);
+    free_tilemap(state.screens[s_game_over]);
+    free_tilemap(state.screens[s_win]);
     munmap(state.mapchars, state.mapchars_size);
     for (size_t i = 0; i < NTILESETS; i++) {
         unref_tileset(state.tilesets[i]);
