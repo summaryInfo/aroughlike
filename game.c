@@ -266,6 +266,8 @@ int64_t tick(struct timespec current) {
         ctx.want_redraw |= camera_moved || player_moved;
     }
 
+    tilemap_refresh(state.map);
+
     return MAX(0, MIN(update_time, tick_time));
 }
 

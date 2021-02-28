@@ -38,6 +38,7 @@ struct tilemap {
     size_t height;
     int16_t tile_width;
     int16_t tile_height;
+    uint32_t *dirty;
     double scale;
     tile_t tiles[];
 };
@@ -57,17 +58,6 @@ void tilemap_set_scale(struct tilemap *map, double scale);
 tile_t tilemap_get_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer);
 void tilemap_animation_tick(struct tilemap *map);
 void tilemap_random_tick(struct tilemap *map);
-
-inline static tile_t tilemap_set_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
-    tile_t *tilep = &map->tiles[layer + x*TILEMAP_LAYERS + y*TILEMAP_LAYERS*map->width];
-    tile_t old = *tilep;
-    *tilep = tile;
-    return old;
-}
-
-inline static tile_t tilemap_get_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer) {
-    return map->tiles[layer + x*TILEMAP_LAYERS + y*TILEMAP_LAYERS*map->width];
-}
-
+void tilemap_refresh(struct tilemap *map);
 
 #endif

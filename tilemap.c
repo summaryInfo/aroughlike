@@ -5,6 +5,29 @@
 #include <assert.h>
 #include <string.h>
 
+#define TILE_TRAP MKTILE(1, 24*4+2)
+
+inline static bool get_dirty(struct tilemap *map, size_t x, size_t y) {
+    return map->dirty[y*((map->width + 31) >> 5) + (x >> 5)] & (1U << (x & 31));
+}
+
+inline static void mark_dirty(struct tilemap *map, size_t x, size_t y) {
+    map->dirty[y*((map->width + 31) >> 5) + (x >> 5)] |= 1U << (x & 31);
+}
+
+
+inline static tile_t tilemap_set_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
+    mark_dirty(map, x, y);
+    tile_t *tilep = &map->tiles[layer + x*TILEMAP_LAYERS + y*TILEMAP_LAYERS*map->width];
+    tile_t old = *tilep;
+    *tilep = tile;
+    return old;
+}
+
+inline static tile_t tilemap_get_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer) {
+    return map->tiles[layer + x*TILEMAP_LAYERS + y*TILEMAP_LAYERS*map->width];
+}
+
 struct tileset *create_tileset(const char *path, struct tile *tiles, size_t ntiles) {
     struct tileset *set = calloc(1, sizeof(*set));
     assert(set);
@@ -71,8 +94,12 @@ struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, 
     assert(tile_width > 0);
     assert(tile_height > 0);
 
-    struct tilemap *map = malloc(sizeof(*map) + width*height*TILEMAP_LAYERS*sizeof(tile_t));
+    size_t dirty_size = ((width + 31) >> 5)*height*sizeof(uint32_t);
+    size_t tiles_size = (width*height*TILEMAP_LAYERS*sizeof(tile_t) + 3) & ~3;
+    struct tilemap *map = malloc(sizeof(*map) + dirty_size + tiles_size);
     assert(map);
+
+    map->dirty = (uint32_t *)((uint8_t *)map->tiles + tiles_size);
 
     if (nsets) {
         assert(sets);
@@ -135,15 +162,6 @@ tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer
     }
 
     tile_t old = tilemap_set_tile_unsafe(map, x, y, layer, tile);
-
-    for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
-        tile_t tilei = tilemap_get_tile_unsafe(map, x, y, i);
-        if (tilei == NOTILE) continue;
-        tileset_queue_tile(map->cbuf, map->sets[TILESET_ID(tilei)],
-                          TILE_ID(tilei), x*map->tile_width, y*map->tile_height, 1);
-        drain_work();
-    }
-
     return old;
 }
 
@@ -151,28 +169,33 @@ void tilemap_set_scale(struct tilemap *map, double scale) {
     map->scale = scale;
 }
 
-#define TILE_TRAP MKTILE(1, 24*4+2)
+void tilemap_refresh(struct tilemap *map) {
+    for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
+        for (size_t yi = 0; yi < map->height; yi++) {
+            for (size_t xi = 0; xi < map->width; xi++) {
+                if (get_dirty(map, xi, yi)) {
+                    tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
+                    if (tile == NOTILE) continue;
+                    tileset_queue_tile(map->cbuf, map->sets[TILESET_ID(tile)],
+                                       TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
+                }
+            }
+        }
+        drain_work();
+    }
+    size_t dirty_size = ((map->width + 31) >> 5)*map->height;
+    memset(map->dirty, 0, dirty_size);
+}
 
 void tilemap_animation_tick(struct tilemap *map) {
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
-            bool renew = 0;
             for (size_t zi = 0; zi < TILEMAP_LAYERS; zi++) {
                 tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, zi);
-                if (tileid == NOTILE) continue;
-                if (tileid == TILE_TRAP) continue;
+                if (tileid == NOTILE || tileid == TILE_TRAP) continue;
                 struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
-                tilemap_set_tile_unsafe(map, xi, yi, zi, MKTILE(TILESET_ID(tileid), tile->next_frame));
-                renew |= tileid != tile->next_frame;
-            }
-            if (renew) {
-                for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
-                    tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
-                    if (tile == NOTILE) continue;
-                    tileset_queue_tile(map->cbuf, map->sets[TILESET_ID(tile)],
-                                      TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
-                    drain_work();
-                }
+                if (tileid != tile->next_frame)
+                    tilemap_set_tile_unsafe(map, xi, yi, zi, MKTILE(TILESET_ID(tileid), tile->next_frame));
             }
         }
     }
@@ -186,14 +209,6 @@ void tilemap_random_tick(struct tilemap *map) {
 
             struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
             tilemap_set_tile_unsafe(map, xi, yi, 0, MKTILE(TILESET_ID(tileid), tile->next_frame));
-
-            for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
-                tile_t tilei = tilemap_get_tile_unsafe(map, xi, yi, i);
-                if (tilei == NOTILE) continue;
-                tileset_queue_tile(map->cbuf, map->sets[TILESET_ID(tilei)],
-                                  TILE_ID(tilei), xi*map->tile_width, yi*map->tile_height, 1);
-                drain_work();
-            }
         }
     }
 }
