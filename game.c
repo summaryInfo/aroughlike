@@ -356,6 +356,7 @@ int64_t tick(struct timespec current) {
 void reset_game(void) {
     state.level = 0;
     state.player.lives = 1;
+    state.player.inv_end = state.player.inv_start = (struct timespec){0};
     next_level();
 
     // Select random player model
