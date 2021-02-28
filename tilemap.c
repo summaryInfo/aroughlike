@@ -161,8 +161,7 @@ tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer
         assert(TILE_ID(tile) < map->sets[TILESET_ID(tile)]->ntiles);
     }
 
-    tile_t old = tilemap_set_tile_unsafe(map, x, y, layer, tile);
-    return old;
+    return tilemap_set_tile_unsafe(map, x, y, layer, tile);
 }
 
 void tilemap_set_scale(struct tilemap *map, double scale) {

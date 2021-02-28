@@ -132,7 +132,7 @@ void init_workers(void) {
     // This is used for faster
     // memory allocation for job
     // arguments
-    storage_start = storage_cur = malloc(STORAGE_SIZE);
+    storage_start = storage_cur = aligned_alloc(CACHE_LINE, STORAGE_SIZE);
     storage_end = storage_start + STORAGE_SIZE;
 
     pthread_cond_init(&in_cond, NULL);

@@ -181,6 +181,7 @@ static void do_fill_aligned(void *varg) {
         }
         for (; i < arg->w*4; i += 16) _mm_stream_si128((void *)(ptr + i), val);
     }
+    _mm_sfence();
 }
 
 void image_queue_fill(struct image im, struct rect rect, color_t fg) {
@@ -309,8 +310,8 @@ static void do_blt_aligned2(void *varg) {
     for (size_t j = 0; j < arg->h; j++) {
         for (size_t i = 0; i < arg->w; i += 4) {
             void *ptr = arg->dst + j*arg->dstride + i;
-            const __m128i d = _mm_load_si128((const void *)ptr);
-            const __m128i s = _mm_load_si128((const void *)(arg->src + j*arg->sstride + i));
+            const __m128i d = _mm_load_si128((void *)ptr);
+            const __m128i s = _mm_load_si128((void *)(arg->src + j*arg->sstride + i));
             _mm_store_si128(ptr, blend4(d, s));
         }
     }
