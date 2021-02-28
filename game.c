@@ -36,15 +36,27 @@
 #define TILE_FLOOR MKTILE(TILESET_STATIC, 10*0+6)
 #define TILE_TRAP MKTILE(TILESET_ANIMATED, 24*4+2)
 #define TILE_EXIT MKTILE(TILESET_STATIC, 10*3+9)
-#define TILE_POISON MKTILE(TILESET_ANIMATED, 4*17+ 3)
-#define TILE_POISON_STATIC MKTILE(TILESET_STATIC, 10*8+ 9)
+#define TILE_POISON MKTILE(TILESET_ANIMATED, 4*17+3)
+#define TILE_POISON_STATIC MKTILE(TILESET_STATIC, 10*8+9)
+#define TILE_IPOISON MKTILE(TILESET_ANIMATED, 4*16+3)
+#define TILE_IPOISON_STATIC MKTILE(TILESET_STATIC, 10*9+7)
+#define TILE_SPOISON MKTILE(TILESET_ANIMATED, 4*14+3)
+#define TILE_SPOISON_STATIC MKTILE(TILESET_STATIC, 10*9+8)
+#define TILE_SIPOISON MKTILE(TILESET_ANIMATED, 4*15+3)
+#define TILE_SIPOISON_STATIC MKTILE(TILESET_STATIC, 10*8+7)
 
 #define WALL '#'
 #define TRAP 'T'
 #define VOID ' '
 #define EXIT 'x'
 #define POISON 'P'
+#define IPOISON 'I'
+#define SPOISON 'p'
+#define SIPOISON 'i'
 #define FLOOR '.'
+
+#define INV_COLOR 0xFF62ABD4
+#define INV_DUR (3*SEC)
 
 struct gamestate {
     struct tilemap *map;
@@ -60,6 +72,9 @@ struct gamestate {
         double y;
         tile_t tile;
         int lives;
+        // End of invincibility
+        struct timespec inv_end;
+        struct timespec inv_start;
     } player;
 
     enum state {
@@ -91,8 +106,6 @@ void load_map_from_file(const char *file);
 /* This is main drawing function, that is called
  * FPS times a second */
 void redraw(struct timespec current) {
-    (void)current;
-
     int16_t map_x = state.camera_x + ctx.backbuf.width/2;
     int16_t map_y = state.camera_y + ctx.backbuf.height/2;
     int16_t map_h = ctx.scale*state.map->height*TILE_WIDTH;
@@ -118,13 +131,21 @@ void redraw(struct timespec current) {
 
     tileset_queue_tile(ctx.backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, ctx.scale);
 
-    /* Draw lives */
+    /* Draw invincibility timer */
+    int64_t inv_total = TIMEDIFF(state.player.inv_start, state.player.inv_end);
+    int64_t inv_rest = MIN(TIMEDIFF(current, state.player.inv_end), inv_total);
+    if (inv_rest > 0) {
+        image_queue_fill(ctx.backbuf, (struct rect){0, 0,
+                inv_rest*ctx.backbuf.width/inv_total, 4*ctx.interface_scale}, INV_COLOR);
+    }
 
+    /* Draw lives */
     for (int i = 0; i < state.player.lives; i++) {
         int16_t px = 20 + (state.player.lives - i)*TILE_WIDTH*ctx.interface_scale/2;
         int16_t py = 24 - 8*(i & 1) ;
-        tileset_queue_tile(ctx.backbuf, state.tilesets[TILESET_ID(TILE_POISON_STATIC)],
-                           TILE_ID(TILE_POISON_STATIC), px, py, ctx.interface_scale);
+        tile_t lives_tile = inv_rest > 0 ? TILE_IPOISON_STATIC : TILE_POISON_STATIC;
+        tileset_queue_tile(ctx.backbuf, state.tilesets[TILESET_ID(lives_tile)],
+                           TILE_ID(lives_tile), px, py, ctx.interface_scale);
         drain_work();
     }
 
@@ -142,6 +163,12 @@ inline static char get_cell(int x, int y) {
     if ((ssize_t)state.map->width <= x || x < 0) return VOID;
     if ((ssize_t)state.map->height <= y || y < 0) return VOID;
     return state.mapchars[x+y*(state.map->width+1)];
+}
+
+inline static void set_cell(int x, int y, char cell) {
+    if ((ssize_t)state.map->width <= x || x < 0) return;
+    if ((ssize_t)state.map->height <= y || y < 0) return;
+    state.mapchars[x+y*(state.map->width+1)] = cell;
 }
 
 inline static void next_level(void) {
@@ -174,6 +201,7 @@ inline static struct rect get_bounding_box_for(char cell, int16_t x, int16_t y) 
             0, 0,
         };
     case POISON:
+    case IPOISON:
         return (struct rect) {
             x*TILE_WIDTH + TILE_WIDTH/3,
             y*TILE_HEIGHT + TILE_HEIGHT/3,
@@ -256,9 +284,20 @@ int64_t tick(struct timespec current) {
                     else state.player.y -= hy;
                     break;
                 case POISON:
+                case IPOISON:
+                case SPOISON:
+                case SIPOISON:
                     if (fmin(fabs(hx), fabs(hy)) > 0) {
-                        state.player.lives++;
-                        state.mapchars[(state.map->width + 1)*(py+y) + (ssize_t)(px+x)] = FLOOR;
+                        if (cell == POISON) state.player.lives += 2;
+                        else if (cell == SPOISON) state.player.lives++;
+                        else {
+                            int64_t inc = (1 + (cell == IPOISON))*INV_DUR;
+                            state.player.inv_start = current;
+                            if (TIMEDIFF(state.player.inv_end, current) > 0)
+                                state.player.inv_end = current;
+                            TIMEINC(state.player.inv_end, inc);
+                        }
+                        set_cell(px + x, py + y, FLOOR);
                         tilemap_set_tile(state.map, px+x, py+y, 1, NOTILE);
                         ctx.want_redraw = 1;
                     }
@@ -271,9 +310,12 @@ int64_t tick(struct timespec current) {
                     break;
                 case TRAP:
                     if (fmin(fabs(hx), fabs(hy)) > 0) {
-                        if (tilemap_get_tile(state.map, px+x, py+y, 0) != TILE_TRAP &&
-                                TIMEDIFF(state.last_damage, current) > SEC) {
-                            if (!--state.player.lives)
+                        bool trap_is_active = tilemap_get_tile(state.map, px+x, py+y, 0) != TILE_TRAP;
+                        bool damaged_recently = TIMEDIFF(state.last_damage, current) < SEC;
+                        bool invincible = TIMEDIFF(state.player.inv_end, current) < 0;
+                        if (trap_is_active && !damaged_recently && !invincible) {
+                            state.player.lives -= 2;
+                            if (state.player.lives <= 0)
                                 state.state = s_game_over;
                             state.last_damage = current;
                             ctx.want_redraw = 1;
@@ -324,18 +366,22 @@ void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
         if (pressed) reset_game();
         break;
     case XK_w:
+    case XK_Up:
         ctx.tick_early = !state.keys.forward;
         state.keys.forward = pressed;
         break;
     case XK_s:
+    case XK_Down:
         ctx.tick_early = !state.keys.backward;
         state.keys.backward = pressed;
         break;
     case XK_a:
+    case XK_Left:
         ctx.tick_early = !state.keys.left;
         state.keys.left = pressed;
         break;
     case XK_d:
+    case XK_Right:
         ctx.tick_early = !state.keys.right;
         state.keys.right = pressed;
         break;
@@ -516,20 +562,32 @@ format_error:
         case '@': /* player start */
             state.player.x = x*TILE_WIDTH;
             state.player.y = y*TILE_HEIGHT;
+            set_cell(x, y, FLOOR);
             tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
             x++;
             break;
         case TRAP: /* trap */
             tilemap_set_tile(state.map, x++, y, 0, TILE_TRAP);
             break;
-        case POISON: /* poison */
+        case POISON: /* live poison */
+        case IPOISON: /* invincibility poison */
+        case SPOISON: /* small live poison */
+        case SIPOISON: /* small invincibility poison */ {
+            tile_t tile = NOTILE;
+            switch (c) {
+            case POISON: tile = TILE_POISON; break;
+            case IPOISON: tile = TILE_IPOISON; break;
+            case SPOISON: tile = TILE_SPOISON; break;
+            case SIPOISON: tile = TILE_SIPOISON; break;
+            }
             tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
-            tilemap_set_tile(state.map, x++, y, 1, TILE_POISON);
+            tilemap_set_tile(state.map, x++, y, 1, tile);
             break;
-        case 'x': /* exit */
+        }
+        case EXIT: /* exit */
             tilemap_set_tile(state.map, x, y, 1, TILE_EXIT);
             // fallthrough
-        case '.': /* floor */
+        case FLOOR: /* floor */
             tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
             x++;
             break;
