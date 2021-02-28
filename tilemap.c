@@ -182,7 +182,7 @@ void tilemap_refresh(struct tilemap *map) {
         }
         drain_work();
     }
-    size_t dirty_size = ((map->width + 31) >> 5)*map->height;
+    size_t dirty_size = ((map->width + 31) >> 5)*map->height*sizeof(uint32_t);
     memset(map->dirty, 0, dirty_size);
 }
 
