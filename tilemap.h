@@ -46,12 +46,12 @@ struct tilemap {
 struct tileset *create_tileset(const char *path, struct tile *tiles, size_t ntiles);
 void unref_tileset(struct tileset *);
 void ref_tileset(struct tileset *);
-void tileset_draw_tile(struct image dst, struct tileset *set, tile_t tile, int16_t x, int16_t y, double scale);
+void tileset_queue_tile(struct image dst, struct tileset *set, tile_t tile, int16_t x, int16_t y, double scale);
 
 struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, int16_t tile_height, struct tileset **sets, size_t nsets) ;
 void free_tilemap(struct tilemap *map);
 tile_t tilemap_add_tileset(struct tilemap *map, struct tileset *tileset);
-void tilemap_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y);
+void tilemap_queue_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y);
 tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile);
 void tilemap_set_scale(struct tilemap *map, double scale);
 tile_t tilemap_get_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer);

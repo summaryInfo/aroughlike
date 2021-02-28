@@ -99,13 +99,15 @@ void redraw(struct timespec current) {
     int16_t map_w = ctx.scale*state.map->width*TILE_WIDTH;
 
     /* Clear screen */
-    image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, map_y}, BG_COLOR);
-    image_draw_rect(ctx.backbuf, (struct rect){0, map_y, map_x, map_h}, BG_COLOR);
-    image_draw_rect(ctx.backbuf, (struct rect){0, map_y + map_h, ctx.backbuf.width, ctx.backbuf.height - map_y - map_h}, BG_COLOR);
-    image_draw_rect(ctx.backbuf, (struct rect){map_x + map_w, map_y, ctx.backbuf.width - map_x - map_w, map_h}, BG_COLOR);
+    image_queue_fill(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, map_y}, BG_COLOR);
+    image_queue_fill(ctx.backbuf, (struct rect){0, map_y, map_x, map_h}, BG_COLOR);
+    image_queue_fill(ctx.backbuf, (struct rect){0, map_y + map_h, ctx.backbuf.width, ctx.backbuf.height - map_y - map_h}, BG_COLOR);
+    image_queue_fill(ctx.backbuf, (struct rect){map_x + map_w, map_y, ctx.backbuf.width - map_x - map_w, map_h}, BG_COLOR);
 
     /* Draw map */
-    tilemap_draw(ctx.backbuf, state.map, map_x, map_y);
+    tilemap_queue_draw(ctx.backbuf, state.map, map_x, map_y);
+
+    drain_work();
 
     /* Draw player */
     int16_t player_x = map_x + ctx.scale*state.player.x;
@@ -114,23 +116,24 @@ void redraw(struct timespec current) {
     if (TIMEDIFF(state.last_damage, current) < SEC/2)
         player += (TILE_ID(player)/4 >= 6 ? -4 : +4);
 
-    tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, ctx.scale);
+    tileset_queue_tile(ctx.backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, ctx.scale);
 
     /* Draw lives */
 
     for (int i = 0; i < state.player.lives; i++) {
         int16_t px = 20 + (state.player.lives - i)*TILE_WIDTH*ctx.interface_scale/2;
         int16_t py = 24 - 8*(i & 1) ;
-        tileset_draw_tile(ctx.backbuf, state.tilesets[TILESET_ID(TILE_POISON_STATIC)],
-                          TILE_ID(TILE_POISON_STATIC), px, py, ctx.interface_scale);
+        tileset_queue_tile(ctx.backbuf, state.tilesets[TILESET_ID(TILE_POISON_STATIC)],
+                           TILE_ID(TILE_POISON_STATIC), px, py, ctx.interface_scale);
+        drain_work();
     }
 
 
     if (state.state == s_win) /* Draw win screen */ {
-        image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
+        image_fill(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
                         ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFF00FF00);
     } else if (state.state == s_game_over) /* Draw game over message */ {
-        image_draw_rect(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
+        image_fill(ctx.backbuf, (struct rect){ctx.backbuf.width/4,
                         ctx.backbuf.height/4, ctx.backbuf.width/2, ctx.backbuf.height/2}, 0xFFFF0000);
     }
 }

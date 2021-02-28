@@ -59,8 +59,6 @@ struct context {
     bool has_shm;
     bool has_shm_pixmaps;
 
-    struct timespec last_draw;
-
     double dpi;
     double scale;
     double interface_scale;

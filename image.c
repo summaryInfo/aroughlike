@@ -183,7 +183,7 @@ static void do_fill_aligned(void *varg) {
     }
 }
 
-void image_draw_rect(struct image im, struct rect rect, color_t fg) {
+void image_queue_fill(struct image im, struct rect rect, color_t fg) {
     color_t *data = __builtin_assume_aligned(im.data, CACHE_LINE);
     size_t stride = (im.width + 3) & ~3;
     if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
@@ -423,8 +423,7 @@ static void do_blt_aligned_scaling_linear(void *varg) {
     }
 }
 
-
-void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode) {
+void image_queue_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode) {
     bool fastpath = srect.width == drect.width && srect.height == drect.height;
 
     ssize_t xscale = ((ssize_t)srect.width << FIXPREC)/drect.width;
@@ -558,6 +557,4 @@ void image_blt(struct image dst, struct rect drect, struct image src, struct rec
             }
         }
     }
-
-    drain_work();
 }

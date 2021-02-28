@@ -130,7 +130,7 @@ static void create_window(void) {
     if (!ctx.backbuf.data) die("Can't allocate image");
 
     /* And clear it with background color */
-    image_draw_rect(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
+    image_fill(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
 
     /* Finally, map window */
     xcb_map_window(ctx.con, ctx.wid);
@@ -370,36 +370,23 @@ static void run(void) {
 
         struct timespec cur;
         clock_gettime(CLOCK_TYPE, &cur);
-        int64_t next_tick = tick(cur);
+        next_timeout = tick(cur);
 
-        /* Game is drawn FPS times a second, or if forced
-         * (but only if window is visible) */
+        if (ctx.want_redraw || ctx.force_redraw) {
+            redraw(cur);
+            renderer_update((struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height});
+            ctx.want_redraw = 0;
+            ctx.force_redraw = 0;
 
-        int64_t next_draw = (SEC / FPS) - TIMEDIFF(ctx.last_draw, cur);
-        if ((next_draw <= 10000LL || ctx.force_redraw) && ctx.active) {
-            if (ctx.want_redraw || ctx.force_redraw) {
-                redraw(cur);
-                renderer_update((struct rect){0,0,ctx.backbuf.width,ctx.backbuf.height});
-                ctx.want_redraw = 0;
-                ctx.force_redraw = 0;
-
-#if 0 // Performance debug reporting
-                struct timespec end;
-                clock_gettime(CLOCK_TYPE, &end);
-                int64_t dt = TIMEDIFF(cur, end);
-                warn("Dt = \033[1;%dm%d\033[m", (dt <= 15*SEC/10000LL) + 31, (int)(dt/(SEC/10000LL)));
+#if 1 // Performance debug reporting
+            struct timespec end;
+            clock_gettime(CLOCK_TYPE, &end);
+            int64_t dt = TIMEDIFF(cur, end);
+            warn("Dt = \033[1;%dm%d\033[m", (dt <= 15*SEC/10000LL) + 31, (int)(dt/(SEC/10000LL)));
 #endif
-            }
-            next_draw = (SEC / FPS);
-            ctx.last_draw = cur;
-
         }
 
-        // Poll timeout is calculated from timeout to next redraw/game tick
-
-        next_timeout = ctx.active ? MIN(next_tick, MAX(next_draw, 0)) : next_tick;
         xcb_flush(ctx.con);
-
     }
 
 }
