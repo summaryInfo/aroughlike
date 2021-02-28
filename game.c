@@ -144,7 +144,7 @@ inline static char get_cell(int x, int y) {
     return state.mapchars[x+y*(state.map->width+1)];
 }
 
-void next_level(void) {
+inline static void next_level(void) {
     char buf[20];
     struct stat st;
 
@@ -154,6 +154,34 @@ void next_level(void) {
         state.state = s_normal;
         load_map_from_file(buf);
     } else state.state = s_win;;
+}
+
+inline static struct rect get_bounding_box_for(char cell, int16_t x, int16_t y) {
+    struct rect bb = {x*TILE_HEIGHT, y*TILE_WIDTH, TILE_WIDTH, TILE_HEIGHT};
+    switch (cell) {
+    case WALL:
+        if (get_cell(x, y + 1) != WALL) bb.height /= 2;
+        char left = get_cell(x - 1, y);
+        char right = get_cell(x + 1, y);
+        if (left == VOID && right != VOID) bb.width /= 2, bb.x += TILE_WIDTH/2;
+        else if (left != VOID && right == VOID) bb.width /= 2;
+        break;
+    case EXIT:
+    case VOID:
+        return (struct rect) {
+            x*TILE_WIDTH + TILE_WIDTH/2,
+            y*TILE_HEIGHT + TILE_HEIGHT/2,
+            0, 0,
+        };
+    case POISON:
+        return (struct rect) {
+            x*TILE_WIDTH + TILE_WIDTH/3,
+            y*TILE_HEIGHT + TILE_HEIGHT/3,
+            TILE_WIDTH/3, TILE_WIDTH/3,
+        };
+    default:;
+    }
+    return bb;
 }
 
 
@@ -211,18 +239,24 @@ int64_t tick(struct timespec current) {
         // Handle collisions
 
         for (int32_t y = -1; y <= 1; y++) {
-            double y1 = (py + y)*TILE_WIDTH;
             for (int32_t x = -1; x <= 1; x++) {
-                double x1 = (px + x)*TILE_WIDTH, x0 = state.player.x, y0 = state.player.y;
-                double hy = ((y0 < y1 ? MAX(0, y0 + TILE_HEIGHT - y1) : MIN(0, y0 - y1 - TILE_HEIGHT)));
-                double hx = ((x0 < x1 ? MAX(0, x0 + TILE_WIDTH - x1) : MIN(0, x0 - x1 - TILE_WIDTH)));
-                switch (get_cell(px + x, py + y)) {
+                double x0 = state.player.x, y0 = state.player.y;
+                char cell = get_cell(px + x, py + y);
+                struct rect bb = get_bounding_box_for(cell, px + x, py + y);
+                /* Signed depths for x and y axes.
+                 * They are equal to the distance player
+                 * should be moved to not intersect with
+                 * the bounding box.
+                 */
+                double hy = ((y0 < bb.y ? MAX(0, y0 + TILE_HEIGHT - bb.y) : MIN(0, y0 - bb.y - bb.height)));
+                double hx = ((x0 < bb.x ? MAX(0, x0 + TILE_WIDTH - bb.x) : MIN(0, x0 - bb.x - bb.width)));
+                switch (cell) {
                 case WALL:
                     if (fabs(hx) < fabs(hy)) state.player.x -= hx;
                     else state.player.y -= hy;
                     break;
                 case POISON:
-                    if (fmin(fabs(hx), fabs(hy)) >= TILE_WIDTH/4) {
+                    if (fmin(fabs(hx), fabs(hy)) > 0) {
                         state.player.lives++;
                         state.mapchars[(state.map->width + 1)*(py+y) + (ssize_t)(px+x)] = FLOOR;
                         tilemap_set_tile(state.map, px+x, py+y, 1, NOTILE);
@@ -230,13 +264,13 @@ int64_t tick(struct timespec current) {
                     }
                     break;
                 case VOID:
-                    if (fmin(fabs(hx), fabs(hy)) >= TILE_WIDTH/2) {
+                    if (fmin(fabs(hx), fabs(hy)) > 0) {
                         state.state = s_game_over;
                         ctx.want_redraw = 1;
                     }
                     break;
                 case TRAP:
-                    if (fmin(fabs(hx), fabs(hy)) >= TILE_WIDTH/3) {
+                    if (fmin(fabs(hx), fabs(hy)) > 0) {
                         if (tilemap_get_tile(state.map, px+x, py+y, 0) != TILE_TRAP &&
                                 TIMEDIFF(state.last_damage, current) > SEC) {
                             if (!--state.player.lives)
@@ -247,7 +281,7 @@ int64_t tick(struct timespec current) {
                     }
                     break;
                 case EXIT:
-                    if (fmin(fabs(hx), fabs(hy)) >= TILE_WIDTH/2) {
+                    if (fmin(fabs(hx), fabs(hy)) > 0) {
                         next_level();
                         ctx.want_redraw = 1;
                     }
