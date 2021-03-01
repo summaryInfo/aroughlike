@@ -38,6 +38,13 @@
 #define TILE_SPOISON_STATIC MKTILE(TILESET_STATIC, 10*9+8)
 #define TILE_SIPOISON MKTILE(TILESET_ANIMATED, 4*15+3)
 #define TILE_SIPOISON_STATIC MKTILE(TILESET_STATIC, 10*8+7)
+#define TILE_TORCH_TOP MKTILE(TILESET_ANIMATED, 26*4 + 2)
+#define TILE_TORCH_LEFT MKTILE(TILESET_ANIMATED, 25*4 + 2)
+#define TILE_TORCH_1 MKTILE(TILESET_ANIMATED, 5*4 + 2)
+#define TILE_TORCH_2 MKTILE(TILESET_ANIMATED, 4*4 + 2)
+#define TILE_BONES_1 MKTILE(TILESET_STATIC, 10*6 + 8)
+#define TILE_BONES_2 MKTILE(TILESET_STATIC, 10*7 + 7)
+#define TILE_FLAG_TOP MKTILE(TILESET_ANIMATED, 9*4 + 2)
 
 #define WALL '#'
 #define TRAP 'T'
@@ -51,6 +58,9 @@
 
 #define INV_COLOR 0xFF62ABD4
 #define INV_DUR (3*SEC)
+
+#define STATIC_SCREEN_WIDTH 20
+#define STATIC_SCREEN_HEIGHT 8
 
 struct gamestate {
     struct tilemap *map;
@@ -79,9 +89,10 @@ struct gamestate {
         s_greet,
         s_win,
         s_game_over,
+        s_MAX,
     } state;
 
-    struct tilemap *screens[s_game_over + 1];
+    struct tilemap *screens[s_MAX];
 
     int level;
 
@@ -101,6 +112,14 @@ struct gamestate {
         bool right : 1;
     } keys;
 } state;
+
+struct tileset_desc {
+    const char *path;
+    size_t x, y;
+    bool animated;
+    size_t i;
+};
+
 
 void load_map_from_file(const char *file);
 
@@ -186,6 +205,7 @@ inline static void next_level(void) {
     if (stat(buf, &st) == 0) {
         state.keys = (struct input_state) {0};
         state.state = s_normal;
+        state.camera_y = state.camera_x = 50*scale.map;
         load_map_from_file(buf);
     } else state.state = s_win;;
 }
@@ -455,45 +475,6 @@ tile_t decode_wall(int x, int y) {
     return MKTILE(TILESET_STATIC, 6*10+9);
 }
 
-tile_t decode_wall_decoration(int x, int y) {
-    char bottom = get_cell(x, y + 1);
-    char left = get_cell(x - 1, y);
-    char cur = get_cell(x, y);
-
-    if (bottom != WALL && bottom != VOID && cur == WALL) {
-        // Horizontal wall
-        int r = rand();
-        if (r % 10 == 3) {
-            return  MKTILE(TILESET_ANIMATED, 9*4 + 2); /* Shield */
-        } else if (r % 10 == 5) {
-            return MKTILE(TILESET_ANIMATED, 26*4 + 2); /* Torch */
-        }
-    }
-    if (left == WALL && cur != WALL && cur != VOID) {
-        // Horizontal wall
-        if (rand() % 10 == 0) {
-            return MKTILE(TILESET_ANIMATED, 25*4 + 2); /* Torch */
-        }
-    }
-
-    if (cur == FLOOR) {
-        int r = rand();
-        if (r % 20 == 3) {
-            switch((r/20) % 17) {
-            case 0:
-            case 1: return MKTILE(TILESET_ANIMATED, 5*4 + 2); /* Torch 1 */
-            case 2:
-            case 3: return MKTILE(TILESET_ANIMATED, 4*4 + 2); /* Torch 2 */
-            case 4: return MKTILE(TILESET_STATIC, 10*6 + 8); /* Bones 1 */
-            case 5: return MKTILE(TILESET_STATIC, 10*7 + 7); /* Bones 2 */
-            default:;
-            }
-        }
-    }
-
-    return NOTILE;
-}
-
 tile_t decode_floor(int x, int y) {
     char bottom = get_cell(x, y + 1);
     char right = get_cell(x + 1, y);
@@ -518,6 +499,36 @@ tile_t decode_floor(int x, int y) {
     return MKTILE(TILESET_STATIC, (rand() % 3)*10 + (rand() & 3) + 6);
 }
 
+tile_t decode_decoration(int x, int y) {
+    char bottom = get_cell(x, y + 1);
+    char left = get_cell(x - 1, y);
+    char cur = get_cell(x, y);
+    int r = rand();
+
+    if (bottom != WALL && bottom != VOID && cur == WALL) {
+        if (r % 10 == 3) return TILE_FLAG_TOP;
+        else if (r % 10 == 5) return TILE_TORCH_TOP;
+    }
+    if (left == WALL && cur != WALL && cur != VOID) {
+        if (r % 10 == 0) return TILE_TORCH_LEFT;
+    }
+
+    if (cur == FLOOR) {
+        if (r % 20 == 3) {
+            switch((r/20) % 17) {
+            case 0:
+            case 1: return TILE_TORCH_1;
+            case 2:
+            case 3: return TILE_TORCH_2;
+            case 4: return TILE_BONES_1;
+            case 5: return TILE_BONES_2;
+            default:;
+            }
+        }
+    }
+
+    return NOTILE;
+}
 
 void load_map_from_file(const char *file) {
     int fd = open(file, O_RDONLY);
@@ -628,16 +639,11 @@ format_error:
 
     for (x = 0; x < (int)width; x++) {
         for (y = 0; y < (int)height; y++) {
-            // Decorate walls
-            tilemap_set_tile(state.map, x, y, 2, decode_wall_decoration(x, y));
+            // Decorate map
+            tilemap_set_tile(state.map, x, y, 2, decode_decoration(x, y));
         }
     }
-
-    state.camera_y = state.camera_x = 50*scale.map;
 }
-
-#define MBOX_WIDTH 20
-#define MBOX_HEIGHT 8
 
 struct tilemap *create_screen(size_t width, size_t height) {
     struct tilemap *map  = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
@@ -674,7 +680,7 @@ void draw_message(struct tilemap *map, size_t x, size_t y, const char *message) 
 
 
 static struct tilemap *create_death_screen(void) {
-    struct tilemap *map = create_screen(MBOX_WIDTH, MBOX_HEIGHT);
+    struct tilemap *map = create_screen(STATIC_SCREEN_WIDTH, STATIC_SCREEN_HEIGHT);
     draw_message(map, 6, 2, "YOU DIED");
     draw_message(map, 1, 3, "Press R to restart");
     draw_message(map, 3, 4, "or ESC to exit");
@@ -694,14 +700,14 @@ static struct tilemap *create_death_screen(void) {
 }
 
 static struct tilemap *create_win_screen(void) {
-    struct tilemap *map = create_screen(MBOX_WIDTH, MBOX_HEIGHT);
-    draw_message(map, 6, 2, "YOU WON");
+    struct tilemap *map = create_screen(STATIC_SCREEN_WIDTH, STATIC_SCREEN_HEIGHT);
     tilemap_set_tile(map, 5, 2, 1, MKTILE(TILESET_ANIMATED, 6*4 + 2));
     tilemap_set_tile(map, 13, 2, 1, MKTILE(TILESET_ANIMATED, 6*4 + 2));
-    tilemap_set_tile(map, 0, 0, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
-    tilemap_set_tile(map, MBOX_WIDTH - 1, 0, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
-    tilemap_set_tile(map, 0, MBOX_HEIGHT - 1, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
-    tilemap_set_tile(map, MBOX_WIDTH - 1, MBOX_HEIGHT - 1, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    tilemap_set_tile(map, 0, 0, 1, TILE_FLAG_TOP);
+    tilemap_set_tile(map, STATIC_SCREEN_WIDTH - 1, 0, 1, TILE_FLAG_TOP);
+    tilemap_set_tile(map, 0, STATIC_SCREEN_HEIGHT - 1, 1, TILE_FLAG_TOP);
+    tilemap_set_tile(map, STATIC_SCREEN_WIDTH - 1, STATIC_SCREEN_HEIGHT - 1, 1, TILE_FLAG_TOP);
+    draw_message(map, 6, 2, "YOU WON");
     draw_message(map, 2, 3, "Congratulations!");
     draw_message(map, 1, 4, "Press R to restart");
     draw_message(map, 3, 5, "or ESC to exit");
@@ -710,11 +716,11 @@ static struct tilemap *create_win_screen(void) {
 }
 
 static struct tilemap *create_greet_screen(void) {
-    struct tilemap *map = create_screen(MBOX_WIDTH, MBOX_HEIGHT);
-    tilemap_set_tile(map, 0, 0, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
-    tilemap_set_tile(map, MBOX_WIDTH - 1, 0, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
-    tilemap_set_tile(map, 0, MBOX_HEIGHT - 1, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
-    tilemap_set_tile(map, MBOX_WIDTH - 1, MBOX_HEIGHT - 1, 1, MKTILE(TILESET_ANIMATED, 9*4 + 2));
+    struct tilemap *map = create_screen(STATIC_SCREEN_WIDTH, STATIC_SCREEN_HEIGHT);
+    tilemap_set_tile(map, 0, 0, 1, TILE_FLAG_TOP);
+    tilemap_set_tile(map, STATIC_SCREEN_WIDTH - 1, 0, 1, TILE_FLAG_TOP);
+    tilemap_set_tile(map, 0, STATIC_SCREEN_HEIGHT - 1, 1, TILE_FLAG_TOP);
+    tilemap_set_tile(map, STATIC_SCREEN_WIDTH - 1, STATIC_SCREEN_HEIGHT - 1, 1, TILE_FLAG_TOP);
     tilemap_set_tile(map, 4, 2, 1, MKTILE(TILESET_STATIC, 10*6+6));
     tilemap_set_tile(map, 15, 2, 1, MKTILE(TILESET_STATIC, 10*6+7));
     draw_message(map, 5, 2, "GREETINGS!");
@@ -723,13 +729,6 @@ static struct tilemap *create_greet_screen(void) {
     tilemap_refresh(map);
     return map;
 }
-
-struct tileset_desc {
-    const char *path;
-    size_t x, y;
-    bool animated;
-    size_t i;
-};
 
 void do_load(void *varg) {
     struct tileset_desc *arg = varg;
@@ -761,6 +760,10 @@ void do_load(void *varg) {
 
 }
 
+void set_tile_types(void) {
+
+}
+
 void init(void) {
     struct tileset_desc descs[NTILESETS] = {
         {"data/tiles.png", 10, 10, 0, TILESET_STATIC},
@@ -769,11 +772,11 @@ void init(void) {
         {"data/ascii.png", 16, 16, 0, TILESET_ASCII},
     };
 
-    for (size_t i = 0; i < NTILESETS; i++) {
+    for (size_t i = 0; i < NTILESETS; i++)
         submit_work(do_load, descs + i, sizeof *descs);
-    }
 
     drain_work();
+    set_tile_types();
     reset_game();
 
     state.screens[s_greet] = create_greet_screen();
@@ -784,11 +787,9 @@ void init(void) {
 
 void cleanup(void) {
     free_tilemap(state.map);
-    free_tilemap(state.screens[s_greet]);
-    free_tilemap(state.screens[s_game_over]);
-    free_tilemap(state.screens[s_win]);
-    munmap(state.mapchars, state.mapchars_size);
-    for (size_t i = 0; i < NTILESETS; i++) {
+    for (size_t i = 0; i < s_MAX; i++)
+        if (state.screens[i]) free_tilemap(state.screens[i]);
+    for (size_t i = 0; i < NTILESETS; i++)
         unref_tileset(state.tilesets[i]);
-    }
+    munmap(state.mapchars, state.mapchars_size);
 }
