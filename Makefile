@@ -8,9 +8,9 @@ CFLAGS += -Walloca -Wno-aggressive-loop-optimizations
 CFLAGS += -Wdisabled-optimization -Wduplicated-branches -Wduplicated-cond
 CFLAGS += -Wignored-attributes  -Wincompatible-pointer-types
 CFLAGS += -Winit-self -Wwrite-strings -Wvla
-CFLAGS += -Wmissing-attributes -Wmissing-format-attribute -Wmissing-noreturn
+CFLAGS += -Wmissing-format-attribute -Wmissing-noreturn
 CFLAGS += -Wswitch-bool -Wpacked -Wshadow -Wformat-security
-CFLAGS += -Wswitch-unreachable -Wlogical-op -Wstringop-truncation
+CFLAGS += -Wswitch-unreachable -Wlogical-op
 CFLAGS += -Wnested-externs -Wstrict-prototypes
 
 OBJ := window.o image.o game.o tilemap.o worker.o
