@@ -169,14 +169,17 @@ void image_queue_fill(struct image im, struct rect rect, color_t fg) {
     size_t stride = (im.width + 3) & ~3;
     if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
         if (rect.x & 3) {
+            size_t pref = MIN(4 - (rect.x & 3), rect.width);
             struct do_fill_arg arg = {
                 &data[rect.y * stride + rect.x],
-                fg, rect.height, 4 - (rect.x & 3), stride
+                fg, rect.height, pref, stride
             };
             submit_work(do_fill_unaligned, &arg, sizeof arg);
-            rect.width -= 4 - (rect.x & 3);
-            rect.x += 4 - (rect.x & 3);
+            rect.width -= pref;
+            rect.x += pref;
         }
+
+        if (!(rect.width & ~3)) return;
 
         if (rect.height < 2*(int)nproc) {
             struct do_fill_arg arg = {
