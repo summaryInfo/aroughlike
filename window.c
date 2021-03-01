@@ -89,6 +89,40 @@ static xcb_atom_t intern_atom(const char *atom) {
     return at;
 }
 
+static struct image create_mitshm_image(int16_t width, int16_t height) {
+    struct image im = create_shm_image(width, height);
+    if (!im.data) goto error;
+
+    size_t stride = (width + 3) & ~3;
+
+    xcb_void_cookie_t c;
+    if (!ctx.shm_seg) {
+        ctx.shm_seg = xcb_generate_id(ctx.con);
+    } else {
+        if (ctx.has_shm_pixmaps && ctx.shm_pixmap)
+            xcb_free_pixmap(ctx.con, ctx.shm_pixmap);
+        c = xcb_shm_detach_checked(ctx.con, ctx.shm_seg);
+        check_void_cookie(c);
+    }
+
+    c = xcb_shm_attach_fd_checked(ctx.con, ctx.shm_seg, dup(im.shmid), 0);
+    if (check_void_cookie(c)) goto error;
+
+    if (ctx.has_shm_pixmaps) {
+        if (!ctx.shm_pixmap)
+            ctx.shm_pixmap = xcb_generate_id(ctx.con);
+        xcb_shm_create_pixmap(ctx.con, ctx.shm_pixmap,
+                ctx.wid, stride, height, 32, ctx.shm_seg, 0);
+    }
+
+    return im;
+
+error:
+    warn("Can't create MIT-SHM image of size %dx%d", width, height);
+    free_image(&im);
+    return im;
+}
+
 static void create_window(void) {
     xcb_void_cookie_t c;
 
@@ -126,7 +160,7 @@ static void create_window(void) {
 
     /* Create MIT-SHM backing pixmap */
 
-    ctx.backbuf = create_shm_image(WINDOW_WIDTH, WINDOW_HEIGHT);
+    ctx.backbuf = create_mitshm_image(WINDOW_WIDTH, WINDOW_HEIGHT);
     if (!ctx.backbuf.data) die("Can't allocate image");
 
     /* And clear it with background color */
@@ -308,7 +342,7 @@ static void run(void) {
             case XCB_CONFIGURE_NOTIFY:{
                 xcb_configure_notify_event_t *ev = (xcb_configure_notify_event_t*)event;
                 if (ev->width != ctx.backbuf.width || ev->height != ctx.backbuf.height) {
-                    struct image new = create_shm_image(ev->width, ev->height);
+                    struct image new = create_mitshm_image(ev->width, ev->height);
                     SWAP(ctx.backbuf, new);
                     free_image(&new);
                     ctx.force_redraw = 1;

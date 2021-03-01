@@ -14,7 +14,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <xcb/shm.h>
 #include <smmintrin.h>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -66,7 +65,7 @@ struct image create_image(const char *file) {
 }
 
 struct image create_shm_image(int16_t width, int16_t height) {
-    struct image backbuf = {
+    struct image im = {
         .width = width,
         .height = height,
         .shmid = -1,
@@ -74,7 +73,7 @@ struct image create_shm_image(int16_t width, int16_t height) {
     size_t stride = (width + 3) & ~3;
     size_t size = stride * height * sizeof(color_t);
 
-    if (ctx.has_shm) {
+    if (ctx.has_shm) /* Only create shm image if needed */ {
         char temp[] = "/renderer-XXXXXX";
         int32_t attempts = 16;
 
@@ -84,61 +83,42 @@ struct image create_shm_image(int16_t width, int16_t height) {
             uint64_t r = cur.tv_nsec;
             for (int i = 0; i < 6; ++i, r >>= 5)
                 temp[6+i] = 'A' + (r & 15) + (r & 16) * 2;
-            backbuf.shmid = shm_open(temp, O_RDWR | O_CREAT | O_EXCL, 0600);
-        } while (backbuf.shmid < 0 && errno == EEXIST && attempts-- > 0);
+            im.shmid = shm_open(temp, O_RDWR | O_CREAT | O_EXCL, 0600);
+        } while (im.shmid < 0 && errno == EEXIST && attempts-- > 0);
 
         shm_unlink(temp);
 
-        if (backbuf.shmid < 0) return backbuf;
+        if (im.shmid < 0) return im;
 
-        if (ftruncate(backbuf.shmid, size) < 0) goto error;
+        if (ftruncate(im.shmid, size) < 0) goto error;
 
-        backbuf.data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, backbuf.shmid, 0);
-        if (backbuf.data == MAP_FAILED) goto error;
-        xcb_void_cookie_t c;
-        if (!ctx.shm_seg) {
-            ctx.shm_seg = xcb_generate_id(ctx.con);
-        } else {
-            if (ctx.has_shm_pixmaps && ctx.shm_pixmap)
-                xcb_free_pixmap(ctx.con, ctx.shm_pixmap);
-            c = xcb_shm_detach_checked(ctx.con, ctx.shm_seg);
-            check_void_cookie(c);
-        }
+        im.data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, im.shmid, 0);
+        if (im.data == MAP_FAILED) goto error;
 
-        c = xcb_shm_attach_fd_checked(ctx.con, ctx.shm_seg, dup(backbuf.shmid), 0);
-        if (check_void_cookie(c)) goto error;
+        return im;
 
-        if (ctx.has_shm_pixmaps) {
-            if (!ctx.shm_pixmap)
-                ctx.shm_pixmap = xcb_generate_id(ctx.con);
-            xcb_shm_create_pixmap(ctx.con, ctx.shm_pixmap,
-                    ctx.wid, stride, height, 32, ctx.shm_seg, 0);
-        }
-
-        return backbuf;
     error:
         warn("Can't create image");
-        if (backbuf.data != MAP_FAILED) munmap(backbuf.data, size);
-        if (backbuf.shmid >= 0) close(backbuf.shmid);
-        backbuf.shmid = -1;
-        backbuf.data = NULL;
-        return backbuf;
+        free_image(&im);
+        return im;
     } else {
-        backbuf.data = aligned_alloc(CACHE_LINE, size);
-        return backbuf;
+        im.data = aligned_alloc(CACHE_LINE, size);
+        return im;
     }
 }
 
-void free_image(struct image *backbuf) {
-    if (backbuf->shmid >= 0) {
-        size_t stride = (backbuf->width + 3) & ~3;
-        if (backbuf->data) munmap(backbuf->data, stride * backbuf->height * sizeof(color_t));
-        if (backbuf->shmid >= 0) close(backbuf->shmid);
+void free_image(struct image *im) {
+    if (im->shmid >= 0) {
+        size_t stride = (im->width + 3) & ~3;
+        if (im->data && im->data != MAP_FAILED)
+            munmap(im->data, stride * im->height * sizeof(color_t));
+        close(im->shmid);
     } else {
-        if (backbuf->data) free(backbuf->data);
+        if (im->data && im->data != MAP_FAILED)
+            free(im->data);
     }
-    backbuf->shmid = -1;
-    backbuf->data = NULL;
+    im->shmid = -1;
+    im->data = NULL;
 }
 
 struct do_fill_arg {
