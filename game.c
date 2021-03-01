@@ -107,6 +107,13 @@
 #define CAM_SPEED (5e-8/12)
 #define PLAYER_SPEED (6e-8)
 
+struct frect {
+    double x;
+    double y;
+    double width;
+    double height;
+};
+
 struct gamestate {
     struct tilemap *map;
     struct tilemap *death_screen;
@@ -118,13 +125,13 @@ struct gamestate {
     double camera_y;
 
     struct player {
-        double x;
-        double y;
+        struct frect box;
         tile_t tile;
         int lives;
         // End of invincibility
         struct timespec inv_end;
         struct timespec inv_start;
+        struct timespec last_damage;
     } player;
 
     enum state {
@@ -139,14 +146,13 @@ struct gamestate {
 
     int level;
 
-    /* Game logic is handled in fixed rate, separate from FPS */
     struct timespec last_update;
     struct timespec last_tick;
-    struct timespec last_damage;
     struct timespec last_frame;
     bool tick_early;
     size_t tick_n;
 
+    /* FPS stats */
     int64_t last_delta;
     double avg_delta;
 
@@ -198,10 +204,10 @@ void redraw(struct timespec current) {
     drain_work();
 
     /* Draw player */
-    int32_t player_x = map_x + state.map->scale*state.player.x;
-    int32_t player_y = map_y + state.map->scale*state.player.y;
+    int32_t player_x = map_x + state.map->scale*state.player.box.x;
+    int32_t player_y = map_y + state.map->scale*state.player.box.y;
     tile_t player = state.player.tile;
-    if (TIMEDIFF(state.last_damage, current) < SEC/2)
+    if (TIMEDIFF(state.player.last_damage, current) < SEC/2)
         player += (TILE_ID(player)/4 >= 6 ? -4 : +4);
 
     tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, state.map->scale);
@@ -261,8 +267,8 @@ inline static char get_tiletype(int x, int y) {
     return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(state.map, x, y, 0)) : type;
 }
 
-inline static struct rect get_bounding_box_for(char cell, int32_t x, int32_t y) {
-    struct rect bb = {x*TILE_HEIGHT, y*TILE_WIDTH, TILE_WIDTH, TILE_HEIGHT};
+inline static struct frect get_bounding_box_for(char cell, int32_t x, int32_t y) {
+    struct frect bb = {x*TILE_HEIGHT, y*TILE_WIDTH, TILE_WIDTH, TILE_HEIGHT};
     switch (cell) {
     case WALL:
         if (get_tiletype(x, y + 1) != WALL) bb.height /= 2;
@@ -272,14 +278,14 @@ inline static struct rect get_bounding_box_for(char cell, int32_t x, int32_t y) 
         else if (left != VOID && right == VOID) bb.width /= 2;
         break;
     case TRAP:
-        return (struct rect) {
+        return (struct frect) {
             x*TILE_WIDTH + TILE_WIDTH/4,
             y*TILE_HEIGHT + TILE_HEIGHT/4,
             TILE_WIDTH/2, TILE_WIDTH/2,
         };
     case EXIT:
     case VOID:
-        return (struct rect) {
+        return (struct frect) {
             x*TILE_WIDTH + TILE_WIDTH/2,
             y*TILE_HEIGHT + TILE_HEIGHT/2,
             0, 0,
@@ -288,7 +294,7 @@ inline static struct rect get_bounding_box_for(char cell, int32_t x, int32_t y) 
     case IPOISON:
     case SPOISON:
     case SIPOISON:
-        return (struct rect) {
+        return (struct frect) {
             x*TILE_WIDTH + TILE_WIDTH/3,
             y*TILE_HEIGHT + TILE_HEIGHT/3,
             TILE_WIDTH/3, TILE_WIDTH/3,
@@ -336,8 +342,8 @@ int64_t tick(struct timespec current) {
         double x_speed_scale = MIN(backbuf.width/5, 512)/MAX(state.map->scale, 2);
         double y_speed_scale = MIN(backbuf.height/4, 512)/MAX(state.map->scale, 2);
 
-        double cam_dx = -pow((state.camera_x + (state.player.x + TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * tick_delta * CAM_SPEED;
-        double cam_dy = -pow((state.camera_y + (state.player.y + TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * tick_delta * CAM_SPEED;
+        double cam_dx = -pow((state.camera_x + (state.player.box.x + state.player.box.width/2)*state.map->scale)/x_speed_scale, 3) * tick_delta * CAM_SPEED;
+        double cam_dy = -pow((state.camera_y + (state.player.box.y + state.player.box.height/2)*state.map->scale)/y_speed_scale, 3) * tick_delta * CAM_SPEED;
 
         if (fabs(cam_dx) < .8) cam_dx = 0;
         if (fabs(cam_dy) < .8) cam_dy = 0;
@@ -345,8 +351,8 @@ int64_t tick(struct timespec current) {
         state.camera_x += MAX(-scale.dpi, MIN(cam_dx, scale.dpi));
         state.camera_y += MAX(-scale.dpi, MIN(cam_dy, scale.dpi));
 
-        double old_px = state.player.x;
-        double old_py = state.player.y;
+        double old_px = state.player.box.x;
+        double old_py = state.player.box.y;
 
         if (state.state == s_normal) {
             // Move player
@@ -356,29 +362,29 @@ int64_t tick(struct timespec current) {
             double dx = speed*(state.keys.right - state.keys.left) * tick_delta;
             double dy = speed*(state.keys.backward - state.keys.forward) * tick_delta;
 
-            state.player.x += dx;
-            state.player.y += dy;
+            state.player.box.x += dx;
+            state.player.box.y += dy;
 
             // Handle collisions and interactions
 
-            int32_t px = state.player.x/TILE_WIDTH;
-            int32_t py = state.player.y/TILE_HEIGHT;
+            int32_t px = state.player.box.x/state.map->tile_width;
+            int32_t py = state.player.box.y/state.map->tile_height;
             for (int32_t y = py; y <= py + 1; y++) {
                 for (int32_t x = px; x <= px + 1; x++) {
                     char cell = get_tiletype(x, y);
-                    struct rect bb = get_bounding_box_for(cell, x, y);
+                    struct frect b = get_bounding_box_for(cell, x, y);
+                    struct frect p = state.player.box;
                     /* Signed depths for x and y axes.
                      * They are equal to the distance player
                      * should be moved to not intersect with
                      * the bounding box.
                      */
-                    double x0 = state.player.x, y0 = state.player.y;
-                    double hy = ((y0 < bb.y ? MAX(0, y0 + TILE_HEIGHT - bb.y) : MIN(0, y0 - bb.y - bb.height)));
-                    double hx = ((x0 < bb.x ? MAX(0, x0 + TILE_WIDTH - bb.x) : MIN(0, x0 - bb.x - bb.width)));
+                    double hy = ((p.y < b.y ? MAX(0, p.y + p.height - b.y) : MIN(0, p.y - b.y - b.height)));
+                    double hx = ((p.x < b.x ? MAX(0, p.x + p.width - b.x) : MIN(0, p.x - b.x - b.width)));
                     switch (cell) {
                     case WALL:
-                        if (fabs(hx) < fabs(hy)) state.player.x -= hx;
-                        else state.player.y -= hy;
+                        if (fabs(hx) < fabs(hy)) state.player.box.x -= hx;
+                        else state.player.box.y -= hy;
                         break;
                     case POISON:
                     case IPOISON:
@@ -406,13 +412,13 @@ int64_t tick(struct timespec current) {
                         break;
                     case ACTIVETRAP:
                         if (fmin(fabs(hx), fabs(hy)) > 0) {
-                            bool damaged_recently = TIMEDIFF(state.last_damage, current) < SEC;
+                            bool damaged_recently = TIMEDIFF(state.player.last_damage, current) < SEC;
                             bool invincible = TIMEDIFF(state.player.inv_end, current) < 0;
                             if (!damaged_recently && !invincible) {
                                 state.player.lives -= 2;
                                 if (state.player.lives <= 0)
                                     state.state = s_game_over;
-                                state.last_damage = current;
+                                state.player.last_damage = current;
                                 want_redraw = 1;
                             }
                         }
@@ -433,8 +439,8 @@ int64_t tick(struct timespec current) {
         tick_time = SEC/FPS;
 
         bool camera_moved = cam_dx || cam_dy;
-        bool player_moved = (int32_t)old_px != (int32_t)state.player.x ||
-                (int32_t)old_py != (int32_t)state.player.y;
+        bool player_moved = (int32_t)old_px != (int32_t)state.player.box.x ||
+                (int32_t)old_py != (int32_t)state.player.box.y;
         want_redraw |= camera_moved || player_moved;
     }
 
@@ -660,8 +666,8 @@ format_error:
             tilemap_set_tile(state.map, x++, y, 0, TILE_VOID);
             break;
         case PLAYER: /* player start */
-            state.player.x = x*TILE_WIDTH;
-            state.player.y = y*TILE_HEIGHT;
+            state.player.box.x = x*TILE_WIDTH;
+            state.player.box.y = y*TILE_HEIGHT;
             tilemap_set_tile(state.map, x, y, 0, decode_floor(addr, width, height, x, y));
             x++;
             break;
@@ -914,6 +920,8 @@ void init(void) {
     state.screens[s_game_over] = create_death_screen();
     state.screens[s_win] = create_win_screen();
     state.state = s_greet;
+    state.player.box.width = TILE_WIDTH;
+    state.player.box.height = TILE_HEIGHT;
     state.tick_n = 1;
     state.avg_delta = SEC/FPS;
     clock_gettime(CLOCK_TYPE, &state.last_frame);
