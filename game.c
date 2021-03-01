@@ -215,6 +215,7 @@ void redraw(struct timespec current) {
         drain_work();
     }
 
+    /* Draw message screen if required by state */
     struct tilemap *screen_to_draw = state.screens[state.state];
     if (screen_to_draw) {
         int32_t sx = backbuf.width/2 - screen_to_draw->width*screen_to_draw->tile_width*screen_to_draw->scale/2;
