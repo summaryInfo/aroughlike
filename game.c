@@ -104,6 +104,9 @@
 #define STATIC_SCREEN_WIDTH 20
 #define STATIC_SCREEN_HEIGHT 8
 
+#define CAM_SPEED (5e-8/12)
+#define PLAYER_SPEED (6e-8)
+
 struct gamestate {
     struct tilemap *map;
     struct tilemap *death_screen;
@@ -333,9 +336,6 @@ int64_t tick(struct timespec current) {
         double x_speed_scale = MIN(backbuf.width/5, 512)/MAX(state.map->scale, 2);
         double y_speed_scale = MIN(backbuf.height/4, 512)/MAX(state.map->scale, 2);
 
-#define CAM_SPEED (5e-8/12)
-#define PLAYER_SPEED (6e-8)
-
         double cam_dx = -pow((state.camera_x + (state.player.x + TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * tick_delta * CAM_SPEED;
         double cam_dy = -pow((state.camera_y + (state.player.y + TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * tick_delta * CAM_SPEED;
 
@@ -359,15 +359,14 @@ int64_t tick(struct timespec current) {
             state.player.x += dx;
             state.player.y += dy;
 
-            int32_t px = (state.player.x + TILE_WIDTH/2)/TILE_WIDTH;
-            int32_t py = (state.player.y + TILE_HEIGHT/2)/TILE_HEIGHT;
+            // Handle collisions and interactions
 
-            // Handle collisions
-
-            for (int32_t y = -1; y <= 1; y++) {
-                for (int32_t x = -1; x <= 1; x++) {
-                    char cell = get_tiletype(px + x, py + y);
-                    struct rect bb = get_bounding_box_for(cell, px + x, py + y);
+            int32_t px = state.player.x/TILE_WIDTH;
+            int32_t py = state.player.y/TILE_HEIGHT;
+            for (int32_t y = py; y <= py + 1; y++) {
+                for (int32_t x = px; x <= px + 1; x++) {
+                    char cell = get_tiletype(x, y);
+                    struct rect bb = get_bounding_box_for(cell, x, y);
                     /* Signed depths for x and y axes.
                      * They are equal to the distance player
                      * should be moved to not intersect with
@@ -395,7 +394,7 @@ int64_t tick(struct timespec current) {
                                     state.player.inv_end = current;
                                 TIMEINC(state.player.inv_end, inc);
                             }
-                            tilemap_set_tile(state.map, px+x, py+y, 1, NOTILE);
+                            tilemap_set_tile(state.map, x, y, 1, NOTILE);
                             want_redraw = 1;
                         }
                         break;
