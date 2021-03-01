@@ -133,8 +133,7 @@ struct do_fill_arg {
     size_t stride;
 };
 
-__attribute__((hot))
-static void do_fill_unaligned(void *varg) {
+static HOT void do_fill_unaligned(void *varg) {
     struct do_fill_arg *arg = varg;
 
     for (size_t j = 0; j < arg->h; j++, arg->ptr += arg->stride) {
@@ -148,8 +147,7 @@ static void do_fill_unaligned(void *varg) {
 
 }
 
-__attribute__((hot))
-static void do_fill_aligned(void *varg) {
+static HOT void do_fill_aligned(void *varg) {
     struct do_fill_arg *arg = varg;
 
     __m128i val = _mm_set1_epi32(arg->fg);
@@ -169,7 +167,7 @@ static void do_fill_aligned(void *varg) {
 }
 
 void image_queue_fill(struct image im, struct rect rect, color_t fg) {
-    color_t *data = __builtin_assume_aligned(im.data, CACHE_LINE);
+    color_t *data = ASSUMEALIGNED(im.data, CACHE_LINE);
     size_t stride = (im.width + 3) & ~3;
     if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
         if (rect.x & 3) {
@@ -222,8 +220,7 @@ void image_queue_fill(struct image im, struct rect rect, color_t fg) {
     }
 }
 
-__attribute__((always_inline))
-inline static __m128i blend4(__m128i under, __m128i over) {
+static FORCEINLINE inline __m128i blend4(__m128i under, __m128i over) {
     const __m128i zero = (__m128i)_mm_setr_epi32(0x00000000, 0x00000000, 0x00000000, 0x00000000);
     const __m128i allo = (__m128i)_mm_setr_epi32(0x03FF03FF, 0x03FF03FF, 0x07FF07FF, 0x07FF07FF);
     const __m128i alhi = (__m128i)_mm_setr_epi32(0x0BFF0BFF, 0x0BFF0BFF, 0x0FFF0FFF, 0x0FFF0FFF);
@@ -242,8 +239,7 @@ inline static __m128i blend4(__m128i under, __m128i over) {
     return _mm_adds_epi8(over, pixel);
 }
 
-__attribute__((always_inline))
-inline static color_t image_sample(struct image src, ssize_t x, ssize_t y) {
+static FORCEINLINE inline color_t image_sample(struct image src, ssize_t x, ssize_t y) {
     // Always clamp to border
     // IDK why I have implemented this...
 
@@ -251,7 +247,7 @@ inline static color_t image_sample(struct image src, ssize_t x, ssize_t y) {
     ssize_t x0 = MIN(x >> FIXPREC, src.width - 1);
     ssize_t y0 = MIN(y >> FIXPREC, src.height - 1);
 
-    color_t *data = __builtin_assume_aligned(src.data, CACHE_LINE);
+    color_t *data = ASSUMEALIGNED(src.data, CACHE_LINE);
 
     ssize_t x1 = MIN((x + (1LL << FIXPREC) - 1) >> FIXPREC, src.width - 1);
     ssize_t y1 = MIN((y + (1LL << FIXPREC) - 1) >> FIXPREC, src.height - 1);
@@ -276,8 +272,7 @@ struct do_blt_arg {
     color_t *src;
 };
 
-__attribute__((hot))
-static void do_blt_aligned(void *varg) {
+static HOT void do_blt_aligned(void *varg) {
     struct do_blt_arg *arg = varg;
 
     for (size_t j = 0; j < arg->h; j++) {
@@ -290,8 +285,7 @@ static void do_blt_aligned(void *varg) {
     }
 }
 
-__attribute__((hot))
-static void do_blt_aligned2(void *varg) {
+static HOT void do_blt_aligned2(void *varg) {
     struct do_blt_arg *arg = varg;
 
     for (size_t j = 0; j < arg->h; j++) {
@@ -304,8 +298,7 @@ static void do_blt_aligned2(void *varg) {
     }
 }
 
-__attribute__((hot))
-static void do_blt_unaligned(void *varg) {
+static HOT void do_blt_unaligned(void *varg) {
     struct do_blt_arg *arg = varg;
 
     for (size_t j = 0; j < arg->h; j++) {
@@ -330,8 +323,7 @@ struct do_blt_scale_arg {
     struct image src;
 };
 
-__attribute__((hot))
-static void do_blt_unaligned_scaling_nearest(void *varg) {
+static HOT void do_blt_unaligned_scaling_nearest(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
     for (ssize_t j = 0; j < arg->h; j++) {
@@ -345,8 +337,7 @@ static void do_blt_unaligned_scaling_nearest(void *varg) {
     }
 }
 
-__attribute__((hot))
-static void do_blt_unaligned_scaling_linear(void *varg) {
+static HOT void do_blt_unaligned_scaling_linear(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
     for (ssize_t j = 0; j < arg->h; j++) {
@@ -358,8 +349,7 @@ static void do_blt_unaligned_scaling_linear(void *varg) {
     }
 }
 
-__attribute__((hot))
-static void do_blt_aligned_scaling_nearest(void *varg) {
+static HOT void do_blt_aligned_scaling_nearest(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
     if (arg->xscale > 0 && arg->x0 >= 0 && ((arg->x0 + arg->w*arg->xscale) >> FIXPREC) <= arg->src.width - 1) {
@@ -393,8 +383,7 @@ static void do_blt_aligned_scaling_nearest(void *varg) {
     }
 }
 
-__attribute__((hot))
-static void do_blt_aligned_scaling_linear(void *varg) {
+static HOT void do_blt_aligned_scaling_linear(void *varg) {
     struct do_blt_scale_arg *arg = varg;
 
     for (ssize_t j = 0; j < arg->h; j++) {
@@ -420,8 +409,8 @@ void image_queue_blt(struct image dst, struct rect drect, struct image src, stru
     drect.width = MIN(dst.width - drect.x, drect.width);
     drect.height = MIN(dst.height - drect.y, drect.height);
 
-    color_t *sdata = __builtin_assume_aligned(src.data, CACHE_LINE);
-    color_t *ddata = __builtin_assume_aligned(dst.data, CACHE_LINE);
+    color_t *sdata = ASSUMEALIGNED(src.data, CACHE_LINE);
+    color_t *ddata = ASSUMEALIGNED(dst.data, CACHE_LINE);
     ssize_t sstride = (src.width + 3) & ~3;
     ssize_t dstride = (dst.width + 3) & ~3;
 
