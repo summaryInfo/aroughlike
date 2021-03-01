@@ -439,7 +439,7 @@ void image_queue_blt(struct image dst, struct rect drect, struct image src, stru
     ssize_t dstride = (dst.width + 3) & ~3;
 
     if (fastpath) {
-            /* Fast path for aligned non-resizing blits */
+        /* Fast path for aligned non-resizing blits */
         if (drect.x < 0) drect.width -= drect.x, srect.x -= drect.x, drect.x = 0;
         if (drect.y < 0) drect.height -= drect.y, srect.y -= drect.y, drect.y = 0;
         drect.height = MIN(drect.height, src.height - srect.y);
@@ -496,7 +496,6 @@ void image_queue_blt(struct image dst, struct rect drect, struct image src, stru
         }
     } else {
         if (LIKELY(drect.width + MIN(drect.x, 0) > 0 && drect.height + MIN(drect.y, 0) > 0)) {
-            // Separate branches for better inlining...
             ssize_t sx0 = srect.x << FIXPREC;
             if (drect.x & 3 && drect.x > 0) {
                 struct do_blt_scale_arg arg = {
