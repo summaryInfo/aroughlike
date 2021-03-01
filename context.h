@@ -37,9 +37,9 @@ void init(void);
 void cleanup(void);
 void redraw(struct timespec current);
 int64_t tick(struct timespec current);
-void handle_key(uint8_t kc, uint16_t state, bool pressed);
+void handle_key(uint8_t kc, uint32_t state, bool pressed);
 
 /* Helpers from window.c */
-uint32_t get_keysym(uint8_t kc, uint16_t state);
+uint32_t get_keysym(uint8_t kc, uint32_t state);
 
 #endif

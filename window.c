@@ -135,7 +135,7 @@ static xcb_atom_t intern_atom(const char *atom) {
     return at;
 }
 
-static void resize_mitshm_image(int16_t width, int16_t height) {
+static void resize_mitshm_image(int32_t width, int16_t height) {
     free_image(&backbuf);
 
     backbuf = ctx.has_shm ? create_shm_image(width, height) : create_image(width, height);
@@ -226,7 +226,7 @@ static void configure_keyboard(void) {
     }
 }
 
-xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
+xcb_keysym_t get_keysym(xcb_keycode_t kc, uint32_t state) {
     /* Since we are not using XKB (xkbcommon) and only
      * core keyboard, we need to translate keycodes to keysyms
      * manually (although we might just want to the first one for consistency) */

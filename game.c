@@ -107,10 +107,10 @@ void load_map_from_file(const char *file);
 /* This is main drawing function, that is called
  * FPS times a second */
 void redraw(struct timespec current) {
-    int16_t map_x = state.camera_x + backbuf.width/2;
-    int16_t map_y = state.camera_y + backbuf.height/2;
-    int16_t map_h = state.map->scale*state.map->height*TILE_WIDTH;
-    int16_t map_w = state.map->scale*state.map->width*TILE_WIDTH;
+    int32_t map_x = state.camera_x + backbuf.width/2;
+    int32_t map_y = state.camera_y + backbuf.height/2;
+    int32_t map_h = state.map->scale*state.map->height*TILE_WIDTH;
+    int32_t map_w = state.map->scale*state.map->width*TILE_WIDTH;
 
     /* Clear screen */
     image_queue_fill(backbuf, (struct rect){0, 0, backbuf.width, map_y}, BG_COLOR);
@@ -124,8 +124,8 @@ void redraw(struct timespec current) {
     drain_work();
 
     /* Draw player */
-    int16_t player_x = map_x + state.map->scale*state.player.x;
-    int16_t player_y = map_y + state.map->scale*state.player.y;
+    int32_t player_x = map_x + state.map->scale*state.player.x;
+    int32_t player_y = map_y + state.map->scale*state.player.y;
     tile_t player = state.player.tile;
     if (TIMEDIFF(state.last_damage, current) < SEC/2)
         player += (TILE_ID(player)/4 >= 6 ? -4 : +4);
@@ -142,8 +142,8 @@ void redraw(struct timespec current) {
 
     /* Draw lives */
     for (int i = 0; i < (state.player.lives + 1)/2; i++) {
-        int16_t px = 20 + ((state.player.lives + 1)/2 - i)*TILE_WIDTH*scale.interface/2;
-        int16_t py = 24 - 8*(i & 1) ;
+        int32_t px = 20 + ((state.player.lives + 1)/2 - i)*TILE_WIDTH*scale.interface/2;
+        int32_t py = 24 - 8*(i & 1) ;
         tile_t lives_tile;
         if ((state.player.lives & 1) & !i) {
             px -= scale.interface;
@@ -158,8 +158,8 @@ void redraw(struct timespec current) {
 
     struct tilemap *screen_to_draw = state.screens[state.state];
     if (screen_to_draw) {
-        int16_t sx = backbuf.width/2 - screen_to_draw->width*screen_to_draw->tile_width*screen_to_draw->scale/2;
-        int16_t sy = backbuf.height/2 - screen_to_draw->height*screen_to_draw->tile_height*screen_to_draw->scale/2;
+        int32_t sx = backbuf.width/2 - screen_to_draw->width*screen_to_draw->tile_width*screen_to_draw->scale/2;
+        int32_t sy = backbuf.height/2 - screen_to_draw->height*screen_to_draw->tile_height*screen_to_draw->scale/2;
         tilemap_queue_draw(backbuf, screen_to_draw, sx, sy);
     }
 
@@ -190,7 +190,7 @@ inline static void next_level(void) {
     } else state.state = s_win;;
 }
 
-inline static struct rect get_bounding_box_for(char cell, int16_t x, int16_t y) {
+inline static struct rect get_bounding_box_for(char cell, int32_t x, int16_t y) {
     struct rect bb = {x*TILE_HEIGHT, y*TILE_WIDTH, TILE_WIDTH, TILE_HEIGHT};
     switch (cell) {
     case WALL:
@@ -373,7 +373,7 @@ void reset_game(void) {
 }
 
 /* This function is called on every key press */
-void handle_key(uint8_t kc, uint16_t st, bool pressed) {
+void handle_key(uint8_t kc, uint32_t st, bool pressed) {
     uint32_t ksym = get_keysym(kc, st);
 
     if (ksym < 0xFF && state.state == s_greet) {
@@ -574,7 +574,7 @@ format_error:
     state.map = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
     tilemap_set_scale(state.map, scale.map);
 
-    int16_t x = 0, y = 0;
+    int32_t x = 0, y = 0;
     for (char *ptr = addr, c; (c = *ptr); ptr++) {
         switch(c) {
         case WALL: /* wall */;

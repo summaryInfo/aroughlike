@@ -17,7 +17,7 @@ inline static void mark_dirty(struct tilemap *map, size_t x, size_t y) {
 }
 
 
-inline static tile_t tilemap_set_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
+inline static tile_t tilemap_set_tile_unsafe(struct tilemap *map, int32_t x, int16_t y, int16_t layer, tile_t tile) {
     mark_dirty(map, x, y);
     tile_t *tilep = &map->tiles[layer + x*TILEMAP_LAYERS + y*TILEMAP_LAYERS*map->width];
     tile_t old = *tilep;
@@ -25,7 +25,7 @@ inline static tile_t tilemap_set_tile_unsafe(struct tilemap *map, int16_t x, int
     return old;
 }
 
-inline static tile_t tilemap_get_tile_unsafe(struct tilemap *map, int16_t x, int16_t y, int16_t layer) {
+inline static tile_t tilemap_get_tile_unsafe(struct tilemap *map, int32_t x, int16_t y, int16_t layer) {
     return map->tiles[layer + x*TILEMAP_LAYERS + y*TILEMAP_LAYERS*map->width];
 }
 
@@ -71,7 +71,7 @@ void ref_tileset(struct tileset *set) {
     set->refc++;
 }
 
-void tileset_queue_tile(struct image dst, struct tileset *set, tile_t tile, int16_t x, int16_t y, double scale) {
+void tileset_queue_tile(struct image dst, struct tileset *set, tile_t tile, int32_t x, int16_t y, double scale) {
     assert(tile < set->ntiles);
     assert(dst.data);
 
@@ -91,7 +91,7 @@ void tileset_queue_tile(struct image dst, struct tileset *set, tile_t tile, int1
     image_queue_blt(dst, drect, set->img, srect, 0);
 }
 
-struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, int16_t tile_height, struct tileset **sets, size_t nsets) {
+struct tilemap *create_tilemap(size_t width, size_t height, int32_t tile_width, int16_t tile_height, struct tileset **sets, size_t nsets) {
     assert(tile_width > 0);
     assert(tile_height > 0);
 
@@ -141,19 +141,19 @@ tile_t tilemap_add_tileset(struct tilemap *map, struct tileset *newset) {
     return map->nsets++;
 }
 
-tile_t tilemap_get_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer) {
+tile_t tilemap_get_tile(struct tilemap *map, int32_t x, int16_t y, int16_t layer) {
     assert(x >= 0 && x < (ssize_t)map->width);
     assert(y >= 0 && y < (ssize_t)map->height);
     assert(layer >= 0 && layer < TILEMAP_LAYERS);
     return tilemap_get_tile_unsafe(map, x, y, layer);
 }
 
-void tilemap_queue_draw(struct image dst, struct tilemap *map, int16_t x, int16_t y) {
+void tilemap_queue_draw(struct image dst, struct tilemap *map, int32_t x, int16_t y) {
     image_queue_blt(dst, (struct rect){x, y, map->tile_width*map->width*map->scale, map->tile_height*map->height*map->scale},
               map->cbuf, (struct rect){0, 0, map->tile_width*map->width, map->tile_height*map->height}, 0);
 }
 
-tile_t tilemap_set_tile(struct tilemap *map, int16_t x, int16_t y, int16_t layer, tile_t tile) {
+tile_t tilemap_set_tile(struct tilemap *map, int32_t x, int16_t y, int16_t layer, tile_t tile) {
     assert(x >= 0 && x < (ssize_t)map->width);
     assert(y >= 0 && y < (ssize_t)map->height);
     assert(layer >= 0 && layer < TILEMAP_LAYERS);

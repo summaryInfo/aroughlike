@@ -28,7 +28,7 @@
 #pragma GCC diagnostic pop
 
 
-struct image create_shm_image(int16_t width, int16_t height) {
+struct image create_shm_image(int32_t width, int16_t height) {
     struct image im = {
         .width = width,
         .height = height,
@@ -66,7 +66,7 @@ error:
     return im;
 }
 
-struct image create_image(int16_t width, int16_t height) {
+struct image create_image(int32_t width, int16_t height) {
     struct image im = {
         .width = width,
         .height = height,
