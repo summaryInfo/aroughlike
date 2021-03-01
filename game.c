@@ -140,10 +140,12 @@ struct gamestate {
     struct timespec last_update;
     struct timespec last_tick;
     struct timespec last_damage;
-    /* Only one early tick is allowed */
-    bool ticked_early;
+    struct timespec last_frame;
     bool tick_early;
-    int32_t tick_n;
+    size_t tick_n;
+
+    int64_t last_delta;
+    double avg_delta;
 
     struct input_state {
         bool forward : 1;
@@ -162,6 +164,16 @@ struct tileset_desc {
 
 
 static void load_map_from_file(const char *file);
+
+static void queue_fps(struct timespec current) {
+    state.avg_delta = TIMEDIFF(state.last_frame, current)*0.01 + state.avg_delta*0.99;
+    state.last_frame = current;
+    int64_t fps = SEC/state.avg_delta, i = 0;
+    do {
+        tileset_queue_tile(backbuf, state.tilesets[TILESET_ASCII], '0' + (fps % 10),
+                backbuf.width - scale.interface/2*TILE_WIDTH*++i - 20, 20, scale.interface/2);
+    } while (fps /= 10);
+}
 
 /* This is main drawing function, that is called
  * FPS times a second */
@@ -198,6 +210,8 @@ void redraw(struct timespec current) {
         image_queue_fill(backbuf, (struct rect){0, 0,
                 inv_rest*backbuf.width/inv_total, 4*scale.interface}, INV_COLOR);
     }
+
+    queue_fps(current);
 
     /* Draw lives */
     for (int i = 0; i < (state.player.lives + 1)/2; i++) {
@@ -285,9 +299,11 @@ inline static struct rect get_bounding_box_for(char cell, int32_t x, int32_t y) 
 /* This function is called TPS times a second
  * (this is a place where all game logic resides) */
 int64_t tick(struct timespec current) {
-    int64_t update_time = SEC/TPS - TIMEDIFF(state.last_update, current);
+    //int64_t fps = MIN(SEC*state.tick_n/TIMEDIFF(state.fps_start, current), FPS);
+    int64_t update_time = SEC/FPS - TIMEDIFF(state.last_update, current);
+
     if (update_time <= 10000LL) {
-        if (state.tick_n++ % 10 == 0) {
+        if (state.tick_n % (FPS/6) == 0) {
             // Anitmation plays
             // at conanstant rate
             tilemap_animation_tick(state.map);
@@ -298,22 +314,30 @@ int64_t tick(struct timespec current) {
             struct tile *tile = &state.tilesets[TILESET_ID(state.player.tile)]->tiles[TILE_ID(state.player.tile)];
             state.player.tile = MKTILE(TILESET_ID(state.player.tile), tile->next_frame);
         }
-        tilemap_random_tick(state.map);
+        if (state.tick_n % (FPS/60) == 0) {
+            tilemap_random_tick(state.map);
+        }
         state.last_update = current;
-        update_time = SEC/TPS;
+        update_time = SEC/FPS;
+        state.tick_n++;
         want_redraw = 1;
     }
 
     int64_t tick_delta = TIMEDIFF(state.last_tick, current);
-    int64_t tick_time = SEC/TPS - tick_delta;
+    int64_t tick_time = SEC/FPS - tick_delta;
     if (tick_time <= 10000LL || state.tick_early) {
+        //warn("%ld %ld %f", tick_delta, tick_time, tick_delta/(double)tick_time);
+
         // Move camera towards player
 
         double x_speed_scale = MIN(backbuf.width/5, 512)/MAX(state.map->scale, 2);
         double y_speed_scale = MIN(backbuf.height/4, 512)/MAX(state.map->scale, 2);
 
-        double cam_dx = -pow((state.camera_x + (state.player.x + TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * tick_delta / (double)(SEC/TPS) / 12;
-        double cam_dy = -pow((state.camera_y + (state.player.y + TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * tick_delta / (double)(SEC/TPS) / 12;
+#define CAM_SPEED (5e-8/12)
+#define PLAYER_SPEED (6e-8)
+
+        double cam_dx = -pow((state.camera_x + (state.player.x + TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * tick_delta * CAM_SPEED;
+        double cam_dy = -pow((state.camera_y + (state.player.y + TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * tick_delta * CAM_SPEED;
 
         if (fabs(cam_dx) < .8) cam_dx = 0;
         if (fabs(cam_dy) < .8) cam_dy = 0;
@@ -321,17 +345,16 @@ int64_t tick(struct timespec current) {
         state.camera_x += MAX(-scale.dpi, MIN(cam_dx, scale.dpi));
         state.camera_y += MAX(-scale.dpi, MIN(cam_dy, scale.dpi));
 
-
         double old_px = state.player.x;
         double old_py = state.player.y;
 
         if (state.state == s_normal) {
             // Move player
 
-            double speed = state.keys.right - state.keys.left +
-                    state.keys.backward - state.keys.forward == 2 ? sqrt(2) : 2;
-            double dx = speed*(state.keys.right - state.keys.left) * tick_delta / (double)(SEC/TPS);
-            double dy = speed*(state.keys.backward - state.keys.forward) * tick_delta / (double)(SEC/TPS);
+            double speed = PLAYER_SPEED*(state.keys.right - state.keys.left +
+                    state.keys.backward - state.keys.forward == 2 ? sqrt(2) : 2);
+            double dx = speed*(state.keys.right - state.keys.left) * tick_delta;
+            double dy = speed*(state.keys.backward - state.keys.forward) * tick_delta;
 
             state.player.x += dx;
             state.player.y += dy;
@@ -408,7 +431,7 @@ int64_t tick(struct timespec current) {
 
         state.last_tick = current;
         state.tick_early = 0;
-        tick_time = TPS/SEC;
+        tick_time = SEC/FPS;
 
         bool camera_moved = cam_dx || cam_dy;
         bool player_moved = (int32_t)old_px != (int32_t)state.player.x ||
@@ -892,6 +915,10 @@ void init(void) {
     state.screens[s_game_over] = create_death_screen();
     state.screens[s_win] = create_win_screen();
     state.state = s_greet;
+    state.tick_n = 1;
+    state.avg_delta = SEC/FPS;
+    clock_gettime(CLOCK_TYPE, &state.last_frame);
+    TIMEINC(state.last_frame, -(int64_t)state.avg_delta);
 }
 
 void cleanup(void) {
