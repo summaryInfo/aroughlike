@@ -19,6 +19,7 @@
 #define SEC 1000000000LL
 #define TIMEDIFF(t, d)  ((((d).tv_sec - (t).tv_sec) * SEC + ((d).tv_nsec - (t).tv_nsec)))
 #define TIMEINC(t, in) ((t).tv_sec += (in)/SEC), ((t).tv_nsec += (in)%SEC)
+#define LEN(x) (sizeof(x)/sizeof(*(x)))
 
 #define LIKELY(x) (__builtin_expect(!!(x), 1))
 #define UNLIKELY(x) (__builtin_expect((x), 0))
@@ -40,26 +41,26 @@ struct rect {
     int32_t height;
 };
 
-inline static struct rect rect_scale_up(struct rect rect, int32_t x_factor, int16_t y_factor) {
+inline static struct rect rect_scale_up(struct rect rect, int32_t x_factor, int32_t y_factor) {
     rect.x *= x_factor;
     rect.y *= y_factor;
     rect.width *= x_factor;
     rect.height *= y_factor;
     return rect;
 }
-inline static struct rect rect_scale_down(struct rect rect, int32_t x_factor, int16_t y_factor) {
+inline static struct rect rect_scale_down(struct rect rect, int32_t x_factor, int32_t y_factor) {
     rect.x /= x_factor;
     rect.y /= y_factor;
     rect.width /= x_factor;
     rect.height /= y_factor;
     return rect;
 }
-inline static struct rect rect_shift(struct rect rect, int32_t x_off, int16_t y_off) {
+inline static struct rect rect_shift(struct rect rect, int32_t x_off, int32_t y_off) {
     rect.x += x_off;
     rect.y += y_off;
     return rect;
 }
-inline static struct rect rect_resize(struct rect rect, int32_t x_off, int16_t y_off) {
+inline static struct rect rect_resize(struct rect rect, int32_t x_off, int32_t y_off) {
     rect.width += x_off;
     rect.height += y_off;
     return rect;

@@ -26,29 +26,71 @@
 #define TILESET_ENTITIES 2
 #define TILESET_ASCII 3
 
-#define TILE_VOID MKTILE(TILESET_STATIC, 10*7+8)
-#define TILE_FLOOR MKTILE(TILESET_STATIC, 10*0+6)
-#define TILE_TRAP MKTILE(TILESET_ANIMATED, 24*4+2)
-#define TILE_EXIT MKTILE(TILESET_STATIC, 10*3+9)
-#define TILE_POISON MKTILE(TILESET_ANIMATED, 4*17+3)
-#define TILE_POISON_STATIC MKTILE(TILESET_STATIC, 10*8+9)
-#define TILE_IPOISON MKTILE(TILESET_ANIMATED, 4*16+3)
-#define TILE_IPOISON_STATIC MKTILE(TILESET_STATIC, 10*9+7)
-#define TILE_SPOISON MKTILE(TILESET_ANIMATED, 4*14+3)
-#define TILE_SPOISON_STATIC MKTILE(TILESET_STATIC, 10*9+8)
-#define TILE_SIPOISON MKTILE(TILESET_ANIMATED, 4*15+3)
-#define TILE_SIPOISON_STATIC MKTILE(TILESET_STATIC, 10*8+7)
-#define TILE_TORCH_TOP MKTILE(TILESET_ANIMATED, 26*4 + 2)
-#define TILE_TORCH_LEFT MKTILE(TILESET_ANIMATED, 25*4 + 2)
-#define TILE_TORCH_1 MKTILE(TILESET_ANIMATED, 5*4 + 2)
-#define TILE_TORCH_2 MKTILE(TILESET_ANIMATED, 4*4 + 2)
-#define TILE_BONES_1 MKTILE(TILESET_STATIC, 10*6 + 8)
-#define TILE_BONES_2 MKTILE(TILESET_STATIC, 10*7 + 7)
-#define TILE_FLAG_TOP MKTILE(TILESET_ANIMATED, 9*4 + 2)
+#define TILE_VOID                    MKTILE(TILESET_STATIC,   10 * 7  + 8)
+#define TILE_TRAP                    MKTILE(TILESET_ANIMATED,  4 * 24 + 2)
+#define TILE_TRAP_0                  MKTILE(TILESET_ANIMATED,  4 * 24 + 0)
+#define TILE_TRAP_1                  MKTILE(TILESET_ANIMATED,  4 * 24 + 1)
+#define TILE_TRAP_2                  MKTILE(TILESET_ANIMATED,  4 * 24 + 3)
+#define TILE_EXIT                    MKTILE(TILESET_STATIC,   10 * 3  + 9)
+
+#define TILE_POISON                  MKTILE(TILESET_ANIMATED,  4 * 17 + 3)
+#define TILE_POISON_0                MKTILE(TILESET_ANIMATED,  4 * 17 + 0)
+#define TILE_POISON_1                MKTILE(TILESET_ANIMATED,  4 * 17 + 1)
+#define TILE_POISON_2                MKTILE(TILESET_ANIMATED,  4 * 17 + 2)
+#define TILE_IPOISON                 MKTILE(TILESET_ANIMATED,  4 * 16 + 3)
+#define TILE_IPOISON_0               MKTILE(TILESET_ANIMATED,  4 * 16 + 0)
+#define TILE_IPOISON_1               MKTILE(TILESET_ANIMATED,  4 * 16 + 1)
+#define TILE_IPOISON_2               MKTILE(TILESET_ANIMATED,  4 * 16 + 2)
+#define TILE_SPOISON                 MKTILE(TILESET_ANIMATED,  4 * 14 + 3)
+#define TILE_SPOISON_0               MKTILE(TILESET_ANIMATED,  4 * 14 + 0)
+#define TILE_SPOISON_1               MKTILE(TILESET_ANIMATED,  4 * 14 + 1)
+#define TILE_SPOISON_2               MKTILE(TILESET_ANIMATED,  4 * 14 + 2)
+#define TILE_SIPOISON                MKTILE(TILESET_ANIMATED,  4 * 15 + 3)
+#define TILE_SIPOISON_0              MKTILE(TILESET_ANIMATED,  4 * 15 + 0)
+#define TILE_SIPOISON_1              MKTILE(TILESET_ANIMATED,  4 * 15 + 1)
+#define TILE_SIPOISON_2              MKTILE(TILESET_ANIMATED,  4 * 15 + 2)
+#define TILE_POISON_STATIC           MKTILE(TILESET_STATIC,   10 * 8  + 9)
+#define TILE_IPOISON_STATIC          MKTILE(TILESET_STATIC,   10 * 9  + 7)
+#define TILE_SPOISON_STATIC          MKTILE(TILESET_STATIC,   10 * 9  + 8)
+#define TILE_SIPOISON_STATIC         MKTILE(TILESET_STATIC,   10 * 8  + 7)
+
+#define TILE_TORCH_TOP               MKTILE(TILESET_ANIMATED,  4 * 26 + 2)
+#define TILE_TORCH_LEFT              MKTILE(TILESET_ANIMATED,  4 * 25 + 2)
+#define TILE_TORCH_1                 MKTILE(TILESET_ANIMATED,  4 * 5  + 2)
+#define TILE_TORCH_2                 MKTILE(TILESET_ANIMATED,  4 * 4  + 2)
+#define TILE_BONES_1                 MKTILE(TILESET_STATIC,   10 * 6  + 8)
+#define TILE_BONES_2                 MKTILE(TILESET_STATIC,   10 * 7  + 7)
+#define TILE_FLAG_TOP                MKTILE(TILESET_ANIMATED,  4 * 9  + 2)
+#define TILE_CHEST_1                 MKTILE(TILESET_ANIMATED,  4 * 6  + 2)
+#define TILE_DOOR_LEFT               MKTILE(TILESET_STATIC,   10 * 6  + 6)
+#define TILE_DOOR_RIGHT              MKTILE(TILESET_STATIC,   10 * 6  + 7)
+
+#define TILE_FLOOR_TOP_LEFT          MKTILE(TILESET_STATIC,   10 * 1  + 1)
+#define TILE_FLOOR_TOP_(x)           MKTILE(TILESET_STATIC,   10 * 1  + 2 + ((x) & 1))
+#define TILE_FLOOR_TOP_RIGHT         MKTILE(TILESET_STATIC,   10 * 1  + 4)
+#define TILE_FLOOR_BOTTOM_LEFT       MKTILE(TILESET_STATIC,   10 * 3  + 1)
+#define TILE_FLOOR_BOTTOM_(x)        MKTILE(TILESET_STATIC,   10 * 3  + 2 + ((x) & 1))
+#define TILE_FLOOR_BOTTOM_RIGHT      MKTILE(TILESET_STATIC,   10 * 3  + 4)
+#define TILE_FLOOR_LEFT              MKTILE(TILESET_STATIC,   10 * 2  + 1)
+#define TILE_FLOOR_RIGHT             MKTILE(TILESET_STATIC,   10 * 2  + 4)
+#define TILE_FLOOR_(x)               MKTILE(TILESET_STATIC,   10 * ((x) / 4 % 3) + ((x) % 4) + 6)
+
+#define TILE_WALL_LEFT_(x)           MKTILE(TILESET_STATIC,   10 * ((x) & 3) + 5)
+#define TILE_WALL_RIGHT_(x)          MKTILE(TILESET_STATIC,   10 * ((x) & 3) + 0)
+#define TILE_WALL_BOTTOM_LEFT        MKTILE(TILESET_STATIC,   10 * 4 + 0)
+#define TILE_WALL_BOTTOM_RIGHT       MKTILE(TILESET_STATIC,   10 * 4 + 5)
+#define TILE_WALL_BOTTOM_(x)         MKTILE(TILESET_STATIC,   10 * 4 + 1 + ((x) & 3))
+#define TILE_WALL_TOP_(x)            MKTILE(TILESET_STATIC,   10 * 0 + 1 + ((x) & 3))
+#define TILE_WALL                    MKTILE(TILESET_STATIC,   10 * 6 + 9)
+#define TILE_WALL_BOTTOM_LEFT_EX(x)  MKTILE(TILESET_STATIC,   10 * 5 + 3 + 2 * ((x) & 1))
+#define TILE_WALL_BOTTOM_RIGHT_EX(x) MKTILE(TILESET_STATIC,   10 * 5 + 4 * ((x) & 1))
+
+#define TILE_PLAYER_(x)              MKTILE(TILESET_ENTITIES,  4 * (2 * ((r) % 7) + ((r % 7) > 2)) + 3);
 
 #define WALL '#'
 #define TRAP 'T'
-#define VOID ' '
+#define ACTIVETRAP 't'
+#define PLAYER '@'
 #define EXIT 'x'
 #define POISON 'P'
 #define IPOISON 'I'
@@ -68,8 +110,6 @@ struct gamestate {
     struct tilemap *win_screen;
     struct tilemap *greet_screen;
     struct tileset *tilesets[NTILESETS];
-    char *mapchars;
-    size_t mapchars_size;
 
     double camera_x;
     double camera_y;
@@ -121,7 +161,7 @@ struct tileset_desc {
 };
 
 
-void load_map_from_file(const char *file);
+static void load_map_from_file(const char *file);
 
 /* This is main drawing function, that is called
  * FPS times a second */
@@ -185,18 +225,6 @@ void redraw(struct timespec current) {
     drain_work();
 }
 
-inline static char get_cell(int x, int y) {
-    if ((ssize_t)state.map->width <= x || x < 0) return VOID;
-    if ((ssize_t)state.map->height <= y || y < 0) return VOID;
-    return state.mapchars[x+y*(state.map->width+1)];
-}
-
-inline static void set_cell(int x, int y, char cell) {
-    if ((ssize_t)state.map->width <= x || x < 0) return;
-    if ((ssize_t)state.map->height <= y || y < 0) return;
-    state.mapchars[x+y*(state.map->width+1)] = cell;
-}
-
 inline static void next_level(void) {
     char buf[20];
     struct stat st;
@@ -210,16 +238,27 @@ inline static void next_level(void) {
     } else state.state = s_win;;
 }
 
-inline static struct rect get_bounding_box_for(char cell, int32_t x, int16_t y) {
+inline static char get_tiletype(int x, int y) {
+    uint32_t type = TILE_TYPE_CHAR(tilemap_get_tiletype(state.map, x, y, 1));
+    return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(state.map, x, y, 0)) : type;
+}
+
+inline static struct rect get_bounding_box_for(char cell, int32_t x, int32_t y) {
     struct rect bb = {x*TILE_HEIGHT, y*TILE_WIDTH, TILE_WIDTH, TILE_HEIGHT};
     switch (cell) {
     case WALL:
-        if (get_cell(x, y + 1) != WALL) bb.height /= 2;
-        char left = get_cell(x - 1, y);
-        char right = get_cell(x + 1, y);
+        if (get_tiletype(x, y + 1) != WALL) bb.height /= 2;
+        char left = get_tiletype(x - 1, y);
+        char right = get_tiletype(x + 1, y);
         if (left == VOID && right != VOID) bb.width /= 2, bb.x += TILE_WIDTH/2;
         else if (left != VOID && right == VOID) bb.width /= 2;
         break;
+    case TRAP:
+        return (struct rect) {
+            x*TILE_WIDTH + TILE_WIDTH/4,
+            y*TILE_HEIGHT + TILE_HEIGHT/4,
+            TILE_WIDTH/2, TILE_WIDTH/2,
+        };
     case EXIT:
     case VOID:
         return (struct rect) {
@@ -229,6 +268,8 @@ inline static struct rect get_bounding_box_for(char cell, int32_t x, int16_t y) 
         };
     case POISON:
     case IPOISON:
+    case SPOISON:
+    case SIPOISON:
         return (struct rect) {
             x*TILE_WIDTH + TILE_WIDTH/3,
             y*TILE_HEIGHT + TILE_HEIGHT/3,
@@ -301,14 +342,14 @@ int64_t tick(struct timespec current) {
 
             for (int32_t y = -1; y <= 1; y++) {
                 for (int32_t x = -1; x <= 1; x++) {
-                    double x0 = state.player.x, y0 = state.player.y;
-                    char cell = get_cell(px + x, py + y);
+                    char cell = get_tiletype(px + x, py + y);
                     struct rect bb = get_bounding_box_for(cell, px + x, py + y);
                     /* Signed depths for x and y axes.
                      * They are equal to the distance player
                      * should be moved to not intersect with
                      * the bounding box.
                      */
+                    double x0 = state.player.x, y0 = state.player.y;
                     double hy = ((y0 < bb.y ? MAX(0, y0 + TILE_HEIGHT - bb.y) : MIN(0, y0 - bb.y - bb.height)));
                     double hx = ((x0 < bb.x ? MAX(0, x0 + TILE_WIDTH - bb.x) : MIN(0, x0 - bb.x - bb.width)));
                     switch (cell) {
@@ -330,7 +371,6 @@ int64_t tick(struct timespec current) {
                                     state.player.inv_end = current;
                                 TIMEINC(state.player.inv_end, inc);
                             }
-                            set_cell(px + x, py + y, FLOOR);
                             tilemap_set_tile(state.map, px+x, py+y, 1, NOTILE);
                             want_redraw = 1;
                         }
@@ -341,12 +381,11 @@ int64_t tick(struct timespec current) {
                             want_redraw = 1;
                         }
                         break;
-                    case TRAP:
+                    case ACTIVETRAP:
                         if (fmin(fabs(hx), fabs(hy)) > 0) {
-                            bool trap_is_active = tilemap_get_tile(state.map, px+x, py+y, 0) != TILE_TRAP;
                             bool damaged_recently = TIMEDIFF(state.last_damage, current) < SEC;
                             bool invincible = TIMEDIFF(state.player.inv_end, current) < 0;
-                            if (trap_is_active && !damaged_recently && !invincible) {
+                            if (!damaged_recently && !invincible) {
                                 state.player.lives -= 2;
                                 if (state.player.lives <= 0)
                                     state.state = s_game_over;
@@ -381,15 +420,15 @@ int64_t tick(struct timespec current) {
     return MAX(0, MIN(update_time, tick_time));
 }
 
-void reset_game(void) {
+static void reset_game(void) {
     state.level = 0;
     state.player.lives = 1;
     state.player.inv_end = state.player.inv_start = (struct timespec){0};
     next_level();
 
     // Select random player model
-    int r = rand() % 7;
-    state.player.tile = MKTILE(TILESET_ENTITIES, 4*(2*r+(r>2)) + 3);
+    int r = rand();
+    state.player.tile = TILE_PLAYER_(r);
 }
 
 /* This function is called on every key press */
@@ -443,66 +482,72 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
     }
 }
 
-tile_t decode_wall(int x, int y) {
-    char bottom = get_cell(x, y + 1);
-    char right = get_cell(x + 1, y);
-    char left = get_cell(x - 1, y);
-    char bottom_right = get_cell(x + 1, y + 1);
-    char bottom_left = get_cell(x - 1, y + 1);
+inline static char get_cell(const char *map, ssize_t width, ssize_t height, ssize_t x, ssize_t y) {
+    if (x < 0 || x >= width) return VOID;
+    if (y < 0 || y >= height) return VOID;
+    return map[(width + 1)*y + x];
+}
+
+static tile_t decode_wall(const char *m, ssize_t w, ssize_t h, int x, int y) {
+    char bottom = get_cell(m, w, h, x, y + 1);
+    char right = get_cell(m, w, h, x + 1, y);
+    char left = get_cell(m, w, h, x - 1, y);
+    char bottom_right = get_cell(m, w, h, x + 1, y + 1);
+    char bottom_left = get_cell(m, w, h, x - 1, y + 1);
 
     // Unfortunately tileset I use does not
     // contain all combinations of walls...
     // But lets try to get the best approximation
 
-    if (left == WALL && bottom == WALL && bottom_left == VOID)
-        return MKTILE(TILESET_STATIC, 5*10 + 3 + 2*(rand()&1));
-    if (right == WALL && bottom == WALL && bottom_right == VOID)
-        return MKTILE(TILESET_STATIC, 5*10 + 4*(rand()&1));
+    int r = rand();
 
-    if (bottom != WALL && bottom != VOID) return MKTILE(TILESET_STATIC, 1 + (rand()&3));
-    if (left != WALL && left != VOID) return MKTILE(TILESET_STATIC, 5 + 10*(rand()&3));
-    if (right != WALL && right != VOID) return MKTILE(TILESET_STATIC, 10*(rand()&3));
+    if (left == WALL && bottom == WALL && bottom_left == VOID)
+        return TILE_WALL_BOTTOM_LEFT_EX(r);
+    if (right == WALL && bottom == WALL && bottom_right == VOID)
+        return TILE_WALL_BOTTOM_RIGHT_EX(r);
+
+    if (bottom != WALL && bottom != VOID) return TILE_WALL_TOP_(r);
+    if (left != WALL && left != VOID) return TILE_WALL_LEFT_(r);
+    if (right != WALL && right != VOID) return TILE_WALL_RIGHT_(r);
 
     if (bottom == VOID) {
-        if (left == VOID && right == WALL) return MKTILE(TILESET_STATIC, 4*10 + 0);
-        else if (left == WALL && right == VOID) return MKTILE(TILESET_STATIC, 4*10 + 5);
-        return MKTILE(TILESET_STATIC, 4*10 + 1 + (rand()&3));
+        if (left == VOID && right == WALL) return TILE_WALL_BOTTOM_LEFT;
+        else if (left == WALL && right == VOID) return TILE_WALL_BOTTOM_RIGHT;
+        return TILE_WALL_BOTTOM_(r);
     }
 
-    if (left == WALL && right == VOID) return MKTILE(TILESET_STATIC, 5 + 10*(rand()&3));
-    if (left == VOID && right == WALL) return MKTILE(TILESET_STATIC, 10*(rand()&3));
+    if (left == WALL && right == VOID) return TILE_WALL_LEFT_(r);
+    if (left == VOID && right == WALL) return TILE_WALL_RIGHT_(r);
 
-    return MKTILE(TILESET_STATIC, 6*10+9);
+    return TILE_WALL;
 }
 
-tile_t decode_floor(int x, int y) {
-    char bottom = get_cell(x, y + 1);
-    char right = get_cell(x + 1, y);
-    char left = get_cell(x - 1, y);
-    char top = get_cell(x, y - 1);
+static tile_t decode_floor(const char *m, ssize_t w, ssize_t h, int x, int y) {
+    char bottom = get_cell(m, w, h, x, y + 1);
+    char right = get_cell(m, w, h, x + 1, y);
+    char left = get_cell(m, w, h, x - 1, y);
+    char top = get_cell(m, w, h, x, y - 1);
+    int r = rand();
 
     if (top == WALL) {
-        if (left == WALL && right != WALL) return MKTILE(TILESET_STATIC, 1*10+1);
-        if (left != WALL && right == WALL) return MKTILE(TILESET_STATIC, 1*10+4);
-        return MKTILE(TILESET_STATIC, 1*10 + 2+(rand() & 1));
+        if (left == WALL && right != WALL) return TILE_FLOOR_TOP_LEFT;
+        if (left != WALL && right == WALL) return TILE_FLOOR_TOP_RIGHT;
+        return TILE_FLOOR_TOP_(r);
+    } else  if (bottom == WALL) {
+        if (left == WALL && right != WALL) return TILE_FLOOR_BOTTOM_LEFT;
+        if (left != WALL && right == WALL) return TILE_FLOOR_BOTTOM_RIGHT;
+        return TILE_FLOOR_BOTTOM_(r);
+    } else {
+        if (left == WALL) return TILE_FLOOR_LEFT;
+        if (right == WALL) return TILE_FLOOR_RIGHT;
+        return TILE_FLOOR_(r);
     }
-
-    if (bottom == WALL) {
-        if (left == WALL && right != WALL) return MKTILE(TILESET_STATIC, 3*10+1);
-        if (left != WALL && right == WALL) return MKTILE(TILESET_STATIC, 3*10+4);
-        return MKTILE(TILESET_STATIC, 3*10 + 2+(rand() & 1));
-    }
-
-    if (left == WALL) return MKTILE(TILESET_STATIC, 2*10 + 1);
-    if (right == WALL) return MKTILE(TILESET_STATIC, 2*10 + 4);
-
-    return MKTILE(TILESET_STATIC, (rand() % 3)*10 + (rand() & 3) + 6);
 }
 
-tile_t decode_decoration(int x, int y) {
-    char bottom = get_cell(x, y + 1);
-    char left = get_cell(x - 1, y);
-    char cur = get_cell(x, y);
+static tile_t decode_decoration(const char *m, ssize_t w, ssize_t h, int x, int y) {
+    char bottom = get_cell(m, w, h, x, y + 1);
+    char left = get_cell(m, w, h, x - 1, y);
+    char cur = get_cell(m, w, h, x, y);
     int r = rand();
 
     if (bottom != WALL && bottom != VOID && cur == WALL) {
@@ -530,7 +575,7 @@ tile_t decode_decoration(int x, int y) {
     return NOTILE;
 }
 
-void load_map_from_file(const char *file) {
+static void load_map_from_file(const char *file) {
     int fd = open(file, O_RDONLY);
     if (fd < 0) {
         warn("Can't open tile map '%s': %s", file, strerror(errno));
@@ -552,10 +597,6 @@ void load_map_from_file(const char *file) {
         warn("Can't mmap tile map '%s': %s", file, strerror(errno));
         return;
     }
-
-    if (state.mapchars) munmap(state.mapchars, state.mapchars_size);
-    state.mapchars = addr;
-    state.mapchars_size = statbuf.st_size + 1;
 
     size_t width = 0, height = 0;
     char *nel = addr;
@@ -589,17 +630,16 @@ format_error:
     for (char *ptr = addr, c; (c = *ptr); ptr++) {
         switch(c) {
         case WALL: /* wall */;
-            tilemap_set_tile(state.map, x, y, 0, decode_wall(x, y));
+            tilemap_set_tile(state.map, x, y, 0, decode_wall(addr, width, height, x, y));
             x++;
             break;
         case VOID: /* void */
             tilemap_set_tile(state.map, x++, y, 0, TILE_VOID);
             break;
-        case '@': /* player start */
+        case PLAYER: /* player start */
             state.player.x = x*TILE_WIDTH;
             state.player.y = y*TILE_HEIGHT;
-            set_cell(x, y, FLOOR);
-            tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
+            tilemap_set_tile(state.map, x, y, 0, decode_floor(addr, width, height, x, y));
             x++;
             break;
         case TRAP: /* trap */
@@ -616,7 +656,7 @@ format_error:
             case SPOISON: tile = TILE_SPOISON; break;
             case SIPOISON: tile = TILE_SIPOISON; break;
             }
-            tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
+            tilemap_set_tile(state.map, x, y, 0, decode_floor(addr, width, height, x, y));
             tilemap_set_tile(state.map, x++, y, 1, tile);
             break;
         }
@@ -624,7 +664,7 @@ format_error:
             tilemap_set_tile(state.map, x, y, 1, TILE_EXIT);
             // fallthrough
         case FLOOR: /* floor */
-            tilemap_set_tile(state.map, x, y, 0, decode_floor(x, y));
+            tilemap_set_tile(state.map, x, y, 0, decode_floor(addr, width, height, x, y));
             x++;
             break;
         case '\n': /* new line */
@@ -640,28 +680,31 @@ format_error:
     for (x = 0; x < (int)width; x++) {
         for (y = 0; y < (int)height; y++) {
             // Decorate map
-            tilemap_set_tile(state.map, x, y, 2, decode_decoration(x, y));
+            tilemap_set_tile(state.map, x, y, 2, decode_decoration(addr, width, height, x, y));
         }
     }
+
+    munmap(addr, statbuf.st_size + 1);
 }
 
-struct tilemap *create_screen(size_t width, size_t height) {
+static struct tilemap *create_screen(size_t width, size_t height) {
     struct tilemap *map  = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             tile_t tile = NOTILE;
-            if (!y) {
-                if (!x) tile = MKTILE(TILESET_STATIC, 1*10+1);
-                else if (x == width - 1) tile = MKTILE(TILESET_STATIC, 1*10+4);
-                else tile = MKTILE(TILESET_STATIC, 1*10 + 2+(rand() & 1));
+            int r = rand();
+            if (y == 0) {
+                if (x == 0) tile = TILE_FLOOR_TOP_LEFT;
+                else if (x == width - 1) tile = TILE_FLOOR_TOP_RIGHT;
+                else tile = TILE_FLOOR_TOP_(r);
             } else if (y == height - 1) {
-                if (!x) tile = MKTILE(TILESET_STATIC, 3*10+1);
-                else if (x == width - 1) tile = MKTILE(TILESET_STATIC, 3*10+4);
-                else tile = MKTILE(TILESET_STATIC, 3*10 + 2+(rand() & 1));
+                if (x == 0) tile = TILE_FLOOR_BOTTOM_LEFT;
+                else if (x == width - 1) tile = TILE_FLOOR_BOTTOM_RIGHT;
+                else tile = TILE_FLOOR_BOTTOM_(r);
             } else {
-                if (!x) tile = MKTILE(TILESET_STATIC, 2*10 + 1);
-                else if (x == width - 1) tile = MKTILE(TILESET_STATIC, 2*10 + 4);
-                else tile = MKTILE(TILESET_STATIC, (rand() % 3)*10 + (rand() & 3) + 6);
+                if (x == 0) tile = TILE_FLOOR_LEFT;
+                else if (x == width - 1) tile = TILE_FLOOR_RIGHT;
+                else tile = TILE_FLOOR_(r);
             }
             tilemap_set_tile(map, x, y, 0, tile);
         }
@@ -688,9 +731,7 @@ static struct tilemap *create_death_screen(void) {
         for (size_t x = 0; x < map->width; x++) {
             int r = rand();
             if (r/2 % 7 == 0) {
-                tilemap_set_tile(map, x, y, 1,
-                        (r & 1 ? MKTILE(TILESET_STATIC, 10*6 + 8) :
-                        MKTILE(TILESET_STATIC, 10*7 + 7)));
+                tilemap_set_tile(map, x, y, 1, r & 1 ? TILE_BONES_1 : TILE_BONES_2);
             }
 
         }
@@ -701,8 +742,8 @@ static struct tilemap *create_death_screen(void) {
 
 static struct tilemap *create_win_screen(void) {
     struct tilemap *map = create_screen(STATIC_SCREEN_WIDTH, STATIC_SCREEN_HEIGHT);
-    tilemap_set_tile(map, 5, 2, 1, MKTILE(TILESET_ANIMATED, 6*4 + 2));
-    tilemap_set_tile(map, 13, 2, 1, MKTILE(TILESET_ANIMATED, 6*4 + 2));
+    tilemap_set_tile(map, 5, 2, 1, TILE_CHEST_1);
+    tilemap_set_tile(map, 13, 2, 1, TILE_CHEST_1);
     tilemap_set_tile(map, 0, 0, 1, TILE_FLAG_TOP);
     tilemap_set_tile(map, STATIC_SCREEN_WIDTH - 1, 0, 1, TILE_FLAG_TOP);
     tilemap_set_tile(map, 0, STATIC_SCREEN_HEIGHT - 1, 1, TILE_FLAG_TOP);
@@ -715,14 +756,15 @@ static struct tilemap *create_win_screen(void) {
     return map;
 }
 
+
 static struct tilemap *create_greet_screen(void) {
     struct tilemap *map = create_screen(STATIC_SCREEN_WIDTH, STATIC_SCREEN_HEIGHT);
     tilemap_set_tile(map, 0, 0, 1, TILE_FLAG_TOP);
     tilemap_set_tile(map, STATIC_SCREEN_WIDTH - 1, 0, 1, TILE_FLAG_TOP);
     tilemap_set_tile(map, 0, STATIC_SCREEN_HEIGHT - 1, 1, TILE_FLAG_TOP);
     tilemap_set_tile(map, STATIC_SCREEN_WIDTH - 1, STATIC_SCREEN_HEIGHT - 1, 1, TILE_FLAG_TOP);
-    tilemap_set_tile(map, 4, 2, 1, MKTILE(TILESET_STATIC, 10*6+6));
-    tilemap_set_tile(map, 15, 2, 1, MKTILE(TILESET_STATIC, 10*6+7));
+    tilemap_set_tile(map, 4, 2, 1, TILE_DOOR_LEFT);
+    tilemap_set_tile(map, 15, 2, 1, TILE_DOOR_RIGHT);
     draw_message(map, 5, 2, "GREETINGS!");
     draw_message(map, 11, 4, "ESC wR");
     draw_message(map, 14, 5, "asd");
@@ -730,7 +772,7 @@ static struct tilemap *create_greet_screen(void) {
     return map;
 }
 
-void do_load(void *varg) {
+static void do_load(void *varg) {
     struct tileset_desc *arg = varg;
 
     struct tile *tiles = calloc(arg->x*arg->y, sizeof(*tiles));
@@ -746,6 +788,7 @@ void do_load(void *varg) {
                 },
                 .origin_x = 0,
                 .origin_y = 0,
+                .type = arg->animated ? TILE_TYPE_ANIMATED : 0,
                 /* In animated tileset_descs one row of tileset
                  * is one animation, and the width of tileset
                  * is the number of frames of animation */
@@ -760,12 +803,14 @@ void do_load(void *varg) {
 
 }
 
-void set_tile_types(void) {
-
+inline static void set_tile_type(tile_t tileid, uint32_t type) {
+    struct tileset *ts = state.tilesets[TILESET_ID(tileid)];;
+    assert(TILE_ID(tileid) < ts->ntiles);
+    ts->tiles[TILE_ID(tileid)].type |= type;
 }
 
-void init(void) {
-    struct tileset_desc descs[NTILESETS] = {
+static void init_tiles(void) {
+    static const struct tileset_desc tileset_descs[NTILESETS] = {
         {"data/tiles.png", 10, 10, 0, TILESET_STATIC},
         {"data/ani.png", 4, 27, 1, TILESET_ANIMATED},
         {"data/ent.png", 4, 14, 1, TILESET_ENTITIES},
@@ -773,10 +818,73 @@ void init(void) {
     };
 
     for (size_t i = 0; i < NTILESETS; i++)
-        submit_work(do_load, descs + i, sizeof *descs);
-
+        submit_work(do_load, tileset_descs + i, sizeof *tileset_descs);
     drain_work();
-    set_tile_types();
+
+    struct {
+        tile_t tile;
+        uint32_t type;
+    } types[] = {
+        { TILE_VOID, VOID },
+        { TILE_EXIT, EXIT },
+        { TILE_TRAP, TRAP | TILE_TYPE_RANDOM | (83 << 16) },
+        { TILE_TRAP_0, ACTIVETRAP },
+        { TILE_TRAP_1, ACTIVETRAP },
+        { TILE_TRAP_2, ACTIVETRAP },
+        { TILE_POISON, POISON },
+        { TILE_POISON_0, POISON },
+        { TILE_POISON_1, POISON },
+        { TILE_POISON_2, POISON },
+        { TILE_IPOISON, IPOISON },
+        { TILE_IPOISON_0, IPOISON },
+        { TILE_IPOISON_1, IPOISON },
+        { TILE_IPOISON_2, IPOISON },
+        { TILE_SPOISON, SPOISON },
+        { TILE_SPOISON_0, SPOISON },
+        { TILE_SPOISON_1, SPOISON },
+        { TILE_SPOISON_2, SPOISON },
+        { TILE_SIPOISON, SIPOISON },
+        { TILE_SIPOISON_0, SIPOISON },
+        { TILE_SIPOISON_1, SIPOISON },
+        { TILE_SIPOISON_2, SIPOISON },
+        { TILE_POISON_STATIC, POISON },
+        { TILE_IPOISON_STATIC, IPOISON },
+        { TILE_SPOISON_STATIC, SPOISON },
+        { TILE_SIPOISON_STATIC, SIPOISON },
+    };
+
+    for (size_t i = 0; i < LEN(types); i++)
+        set_tile_type(types[i].tile, types[i].type);
+
+    tile_t floor_tiles[] = {
+        TILE_FLOOR_TOP_LEFT, TILE_FLOOR_TOP_RIGHT, TILE_FLOOR_BOTTOM_LEFT,
+        TILE_FLOOR_TOP_(0), TILE_FLOOR_TOP_(1),
+        TILE_FLOOR_BOTTOM_(0), TILE_FLOOR_BOTTOM_(1),
+        TILE_FLOOR_(0), TILE_FLOOR_(1), TILE_FLOOR_(2),
+        TILE_FLOOR_(3), TILE_FLOOR_(4), TILE_FLOOR_(5),
+        TILE_FLOOR_(6), TILE_FLOOR_(7), TILE_FLOOR_(8),
+        TILE_FLOOR_(9), TILE_FLOOR_(10), TILE_FLOOR_(11),
+        TILE_FLOOR_BOTTOM_RIGHT, TILE_FLOOR_LEFT, TILE_FLOOR_RIGHT,
+    };
+    for (size_t i = 0; i < LEN(floor_tiles); i++)
+        set_tile_type(floor_tiles[i], FLOOR);
+
+    tile_t wall_tiles[] = {
+        TILE_WALL_LEFT_(0), TILE_WALL_LEFT_(1), TILE_WALL_LEFT_(2), TILE_WALL_LEFT_(3),
+        TILE_WALL_RIGHT_(0), TILE_WALL_RIGHT_(1), TILE_WALL_RIGHT_(2), TILE_WALL_RIGHT_(3),
+        TILE_WALL_BOTTOM_LEFT, TILE_WALL_BOTTOM_RIGHT,
+        TILE_WALL_BOTTOM_(0), TILE_WALL_BOTTOM_(1), TILE_WALL_BOTTOM_(2), TILE_WALL_BOTTOM_(3),
+        TILE_WALL_TOP_(0), TILE_WALL_TOP_(1), TILE_WALL_TOP_(2), TILE_WALL_TOP_(3),
+        TILE_WALL,
+        TILE_WALL_BOTTOM_LEFT_EX(0), TILE_WALL_BOTTOM_LEFT_EX(1),
+        TILE_WALL_BOTTOM_RIGHT_EX(0), TILE_WALL_BOTTOM_RIGHT_EX(1),
+    };
+    for (size_t i = 0; i < LEN(wall_tiles); i++)
+        set_tile_type(wall_tiles[i], WALL);
+}
+
+void init(void) {
+    init_tiles();
     reset_game();
 
     state.screens[s_greet] = create_greet_screen();
@@ -791,5 +899,4 @@ void cleanup(void) {
         if (state.screens[i]) free_tilemap(state.screens[i]);
     for (size_t i = 0; i < NTILESETS; i++)
         unref_tileset(state.tilesets[i]);
-    munmap(state.mapchars, state.mapchars_size);
 }

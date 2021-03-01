@@ -94,7 +94,7 @@ void drain_work(void) {
     pthread_mutex_unlock(&in_mtx);
 }
 
-void submit_work(void (*func)(void *), void *data, size_t data_size) {
+void submit_work(void (*func)(void *), const void *data, size_t data_size) {
     // Align args on CACHE_LINE to prefent false sharing
     size_t inc = (sizeof(struct job) + data_size + CACHE_LINE - 1) & ~(CACHE_LINE - 1);
 

@@ -54,8 +54,8 @@ FORCEINLINE inline static color_t color_mix(color_t dstc, color_t srcc, ssize_t 
 void image_queue_fill(struct image im, struct rect rect, color_t fg);
 void image_queue_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sample_mode mode);
 struct image load_image(const char *file);
-struct image create_image(int32_t width, int16_t height);
-struct image create_shm_image(int32_t width, int16_t height);
+struct image create_image(int32_t width, int32_t height);
+struct image create_shm_image(int32_t width, int32_t height);
 void free_image(struct image *backbuf);
 
 #endif

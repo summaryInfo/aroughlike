@@ -135,7 +135,7 @@ static xcb_atom_t intern_atom(const char *atom) {
     return at;
 }
 
-static void resize_mitshm_image(int32_t width, int16_t height) {
+static void resize_mitshm_image(int32_t width, int32_t height) {
     free_image(&backbuf);
 
     backbuf = ctx.has_shm ? create_shm_image(width, height) : create_image(width, height);
@@ -372,7 +372,7 @@ static void run(void) {
         .events = POLLIN | POLLHUP,
     };
 
-    for (int64_t next_timeout = SEC; !want_exit && !xcb_connection_has_error(ctx.con);) {
+    for (int64_t next_timeout = 0; !want_exit && !xcb_connection_has_error(ctx.con);) {
         struct timespec ts = {next_timeout / SEC, next_timeout % SEC};
         if (ppoll(&pfd, 1, &ts, NULL) < 0 && errno != EINTR)
             die("Poll error: %s", strerror(errno));
@@ -454,7 +454,7 @@ static void run(void) {
             want_redraw = 0;
             ctx.force_redraw = 0;
 
-#if 1 // Performance debug reporting
+#if 0 // Performance debug reporting
             struct timespec end;
             clock_gettime(CLOCK_TYPE, &end);
             int64_t dt = TIMEDIFF(cur, end);

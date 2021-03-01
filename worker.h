@@ -5,7 +5,7 @@
 
 #include <stddef.h>
 
-void submit_work(void (*func)(void *), void *data, size_t data_size);
+void submit_work(void (*func)(void *), const void *data, size_t data_size);
 void init_workers(void);
 void drain_work(void);
 void fini_workers(_Bool force);
