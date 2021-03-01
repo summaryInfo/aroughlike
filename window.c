@@ -89,9 +89,12 @@ static xcb_atom_t intern_atom(const char *atom) {
     return at;
 }
 
-static struct image create_mitshm_image(int16_t width, int16_t height) {
-    struct image im = create_shm_image(width, height);
-    if (!im.data) goto error;
+static void resize_mitshm_image(int16_t width, int16_t height) {
+    free_image(&ctx.backbuf);
+
+    ctx.backbuf = create_shm_image(width, height);
+    if (!ctx.backbuf.data)
+        die("Can't create MIT-SHM image of size %dx%d", width, height);
 
     size_t stride = (width + 3) & ~3;
 
@@ -101,26 +104,21 @@ static struct image create_mitshm_image(int16_t width, int16_t height) {
     } else {
         if (ctx.has_shm_pixmaps && ctx.shm_pixmap)
             xcb_free_pixmap(ctx.con, ctx.shm_pixmap);
-        c = xcb_shm_detach_checked(ctx.con, ctx.shm_seg);
-        check_void_cookie(c);
+        xcb_shm_detach(ctx.con, ctx.shm_seg);
     }
 
-    c = xcb_shm_attach_fd_checked(ctx.con, ctx.shm_seg, dup(im.shmid), 0);
-    if (check_void_cookie(c)) goto error;
+    c = xcb_shm_attach_fd_checked(ctx.con, ctx.shm_seg, dup(ctx.backbuf.shmid), 0);
+    if (check_void_cookie(c))
+        die("Can't attach MIT-SHM image of size %dx%d", width, height);
 
     if (ctx.has_shm_pixmaps) {
         if (!ctx.shm_pixmap)
             ctx.shm_pixmap = xcb_generate_id(ctx.con);
-        xcb_shm_create_pixmap(ctx.con, ctx.shm_pixmap,
+        c = xcb_shm_create_pixmap(ctx.con, ctx.shm_pixmap,
                 ctx.wid, stride, height, 32, ctx.shm_seg, 0);
+        if (check_void_cookie(c))
+            die("Can't attach MIT-SHM shared pixmap of size %dx%d", width, height);
     }
-
-    return im;
-
-error:
-    warn("Can't create MIT-SHM image of size %dx%d", width, height);
-    free_image(&im);
-    return im;
 }
 
 static void create_window(void) {
@@ -159,16 +157,13 @@ static void create_window(void) {
     xcb_change_property(ctx.con, XCB_PROP_MODE_REPLACE, ctx.wid, ctx.atom._NET_WM_ICON_NAME, ctx.atom.UTF8_STRING, 8, sizeof WINDOW_TITLE - 1, WINDOW_TITLE);
 
     /* Create MIT-SHM backing pixmap */
-
-    ctx.backbuf = create_mitshm_image(WINDOW_WIDTH, WINDOW_HEIGHT);
-    if (!ctx.backbuf.data) die("Can't allocate image");
+    resize_mitshm_image(WINDOW_WIDTH, WINDOW_HEIGHT);
 
     /* And clear it with background color */
     image_fill(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
 
     /* Finally, map window */
     xcb_map_window(ctx.con, ctx.wid);
-    xcb_flush(ctx.con);
 }
 
 static void configure_keyboard(void) {
@@ -184,9 +179,35 @@ static void configure_keyboard(void) {
     }
 }
 
+xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
+    /* Since we are not using XKB (xkbcommon) and only
+     * core keyboard, we need to translate keycodes to keysyms
+     * manually (although we might just want to the first one for consistency) */
+
+    xcb_keysym_t *ksyms = xcb_get_keyboard_mapping_keysyms(ctx.keymap);
+    size_t ksym_per_kc = ctx.keymap->keysyms_per_keycode;
+
+    xcb_keysym_t *entry = &ksyms[ksym_per_kc * (kc - xcb_get_setup(ctx.con)->min_keycode)];
+    bool group = ksym_per_kc >= 3 && state & mask_mod_5 && entry[2];
+    bool shift = ksym_per_kc >= 2 && state & mask_shift && entry[1];
+
+    return entry[2*group + shift];
+}
+
+static void init_scale(void) {
+    int32_t dpi = -1;
+    xcb_screen_iterator_t it = xcb_setup_roots_iterator(xcb_get_setup(ctx.con));
+    for (; it.rem; xcb_screen_next(&it))
+        if (it.data) dpi = MAX(dpi, (it.data->width_in_pixels * 25.4)/it.data->width_in_millimeters);
+    ctx.dpi = dpi > 0 ? dpi : 96;
+    ctx.scale = MAX(1, dpi/24);
+    ctx.interface_scale = MAX(1, dpi/32);
+}
+
 static void init_context(void) {
     int screenp;
     ctx.con = xcb_connect(NULL, &screenp);
+    ctx.backbuf.shmid = -1;
 
     xcb_screen_iterator_t sit = xcb_setup_roots_iterator(xcb_get_setup(ctx.con));
     for (; sit.rem; xcb_screen_next(&sit))
@@ -254,7 +275,7 @@ static void init_context(void) {
         }
     }
 
-    // Intern&cache all used atoms
+    /* Intern&cache all used atoms */
 
     ctx.atom._NET_WM_PID = intern_atom("_NET_WM_PID");
     ctx.atom._NET_WM_NAME = intern_atom("_NET_WM_NAME");
@@ -264,15 +285,7 @@ static void init_context(void) {
     ctx.atom.UTF8_STRING = intern_atom("UTF8_STRING");
 
 
-    /* Find and save DPI, it might become useful later */
-
-    int32_t dpi = -1;
-    xcb_screen_iterator_t it = xcb_setup_roots_iterator(xcb_get_setup(ctx.con));
-    for (; it.rem; xcb_screen_next(&it))
-        if (it.data) dpi = MAX(dpi, (it.data->width_in_pixels * 25.4)/it.data->width_in_millimeters);
-    ctx.dpi = dpi > 0 ? dpi : 96;
-    ctx.scale = MAX(1, dpi/24);
-    ctx.interface_scale = MAX(1, dpi/32);
+    init_scale();
 
     /* To reduce number of dependencied
      * XKB/xkbcommon is not used is this program
@@ -306,21 +319,6 @@ static void free_context(void) {
     xcb_disconnect(ctx.con);
 }
 
-xcb_keysym_t get_keysym(xcb_keycode_t kc, uint16_t state) {
-    /* Since we are not using XKB (xkbcommon) and only
-     * core keyboard, we need to translate keycodes to keysyms
-     * manually (although we might just want to the first one for consistency) */
-
-    xcb_keysym_t *ksyms = xcb_get_keyboard_mapping_keysyms(ctx.keymap);
-    size_t ksym_per_kc = ctx.keymap->keysyms_per_keycode;
-
-    xcb_keysym_t *entry = &ksyms[ksym_per_kc * (kc - xcb_get_setup(ctx.con)->min_keycode)];
-    bool group = ksym_per_kc >= 3 && state & mask_mod_5 && entry[2];
-    bool shift = ksym_per_kc >= 2 && state & mask_shift && entry[1];
-
-    return entry[2*group + shift];
-}
-
 static void run(void) {
     struct pollfd pfd = {
         .fd = xcb_get_file_descriptor(ctx.con),
@@ -335,16 +333,13 @@ static void run(void) {
         for (xcb_generic_event_t *event, *nextev = NULL; nextev || (event = xcb_poll_for_event(ctx.con)); free(event)) {
             if (nextev) event = nextev, nextev = NULL;
             switch (event->response_type &= 0x7F) {
-            case XCB_EXPOSE:{
+            case XCB_EXPOSE:
                 ctx.force_redraw = 1;
                 break;
-            }
-            case XCB_CONFIGURE_NOTIFY:{
+            case XCB_CONFIGURE_NOTIFY: {
                 xcb_configure_notify_event_t *ev = (xcb_configure_notify_event_t*)event;
                 if (ev->width != ctx.backbuf.width || ev->height != ctx.backbuf.height) {
-                    struct image new = create_mitshm_image(ev->width, ev->height);
-                    SWAP(ctx.backbuf, new);
-                    free_image(&new);
+                    resize_mitshm_image(ev->width, ev->height);
                     ctx.force_redraw = 1;
                 }
                 break;
