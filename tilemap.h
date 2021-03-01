@@ -13,7 +13,7 @@
 #define TILESET_ID(x) ((x) >> 10)
 #define TILE_ID(x) ((x) & 0x3FF)
 #define MKTILE(set, id) (((set) << 10) | (id))
-#define NOTILE UINT16_MAX
+#define NOTILE UINT32_MAX
 
 typedef uint32_t tile_t;
 
