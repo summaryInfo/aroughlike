@@ -66,6 +66,7 @@ static void *worker(void *arg) {
 }
 
 void drain_work(void) {
+    bool broadcast = 1;
     pthread_mutex_lock(&in_mtx);
     while (first || __atomic_load_n(&active, __ATOMIC_ACQUIRE)) {
         struct job *newjob = NULL;
@@ -77,7 +78,10 @@ void drain_work(void) {
         }
 
         pthread_mutex_unlock(&in_mtx);
-        pthread_cond_broadcast(&in_cond);
+        if (broadcast) {
+            pthread_cond_broadcast(&in_cond);
+            broadcast = 0;
+        }
 
         if (newjob) {
             newjob->func(newjob->data);
