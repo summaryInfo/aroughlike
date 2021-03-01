@@ -1,6 +1,7 @@
 
-#include "tilemap.h"
 #include "image.h"
+#include "tilemap.h"
+#include "worker.h"
 
 #include <assert.h>
 #include <string.h>
@@ -31,7 +32,7 @@ inline static tile_t tilemap_get_tile_unsafe(struct tilemap *map, int16_t x, int
 struct tileset *create_tileset(const char *path, struct tile *tiles, size_t ntiles) {
     struct tileset *set = calloc(1, sizeof(*set));
     assert(set);
-    set->img = create_image(path);
+    set->img = load_image(path);
     assert(set->img.data);
     set->ntiles = ntiles;
     set->tiles = tiles;
@@ -115,7 +116,7 @@ struct tilemap *create_tilemap(size_t width, size_t height, int16_t tile_width, 
     map->height = height;
     map->tile_width = tile_width;
     map->tile_height = tile_height;
-    map->cbuf = create_empty_image(width*tile_width, height*tile_height);
+    map->cbuf = create_image(width*tile_width, height*tile_height);
 
     /* Set every tile to NOTILE */
     memset(map->tiles, 0xFF, width*height*TILEMAP_LAYERS*sizeof(tile_t));

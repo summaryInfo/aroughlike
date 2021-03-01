@@ -2,8 +2,8 @@
 
 #define _POSIX_C_SOURCE 200809L
 
-#include "worker.h"
 #include "util.h"
+#include "worker.h"
 
 #include <assert.h>
 #include <pthread.h>

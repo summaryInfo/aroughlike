@@ -17,7 +17,7 @@ struct image {
     color_t *data;
 };
 
-enum sampler_mode {
+enum sample_mode {
     sample_nearest = 0,
     sample_linear = 1,
 };
@@ -58,25 +58,12 @@ inline static color_t color_mix(color_t dstc, color_t srcc, ssize_t fixalpha) {
             (color_a(dstc)*((1LL << FIXPREC) - 1 - fixalpha) + color_a(srcc)*fixalpha) >> FIXPREC);
 }
 
-
-
 void image_queue_fill(struct image im, struct rect rect, color_t fg);
-void image_queue_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode);
-struct image create_image(const char *file);
-struct image create_empty_image(int16_t width, int16_t height);
+void image_queue_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sample_mode mode);
+struct image load_image(const char *file);
+struct image create_image(int16_t width, int16_t height);
 struct image create_shm_image(int16_t width, int16_t height);
 void free_image(struct image *backbuf);
 
-extern void drain_work(void);
-
-inline static void image_fill(struct image im, struct rect rect, color_t fg) {
-    image_queue_fill(im, rect, fg);
-    drain_work();
-}
-
-inline static void image_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode) {
-    image_queue_blt(dst, drect, src, srect, mode);
-    drain_work();
-}
 #endif
 

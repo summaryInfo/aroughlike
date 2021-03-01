@@ -2,7 +2,6 @@
 
 #define _POSIX_C_SOURCE 200809L
 
-#include "context.h"
 #include "image.h"
 #include "util.h"
 #include "worker.h"
@@ -10,11 +9,12 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>
+#include <smmintrin.h>
 #include <stdint.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <smmintrin.h>
+#include <time.h>
 
 #define STB_IMAGE_IMPLEMENTATION
 #pragma GCC diagnostic push
@@ -28,14 +28,60 @@
 #pragma GCC diagnostic pop
 
 
-struct image create_empty_image(int16_t width, int16_t height) {
+struct image create_shm_image(int16_t width, int16_t height) {
+    struct image im = {
+        .width = width,
+        .height = height,
+        .shmid = -1,
+    };
     size_t stride = (width + 3) & ~3;
-    color_t *restrict data = aligned_alloc(CACHE_LINE, stride*height*sizeof(color_t));
-    memset(data, 0, stride*height*sizeof(color_t));
-    return (struct image) { .width = width, .height = height, .shmid = -1, .data = data };
+    size_t size = stride * height * sizeof(color_t);
+
+    char temp[] = "/renderer-XXXXXX";
+    int32_t attempts = 16;
+
+    do {
+        struct timespec cur;
+        clock_gettime(CLOCK_REALTIME, &cur);
+        uint64_t r = cur.tv_nsec;
+        for (int i = 0; i < 6; ++i, r >>= 5)
+            temp[6+i] = 'A' + (r & 15) + (r & 16) * 2;
+        im.shmid = shm_open(temp, O_RDWR | O_CREAT | O_EXCL, 0600);
+    } while (im.shmid < 0 && errno == EEXIST && attempts-- > 0);
+
+    shm_unlink(temp);
+
+    if (im.shmid < 0) return im;
+
+    if (ftruncate(im.shmid, size) < 0) goto error;
+
+    im.data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, im.shmid, 0);
+    if (im.data == MAP_FAILED) goto error;
+
+    return im;
+
+error:
+    warn("Can't create image");
+    free_image(&im);
+    return im;
 }
 
-struct image create_image(const char *file) {
+struct image create_image(int16_t width, int16_t height) {
+    struct image im = {
+        .width = width,
+        .height = height,
+        .shmid = -1,
+    };
+    size_t stride = (width + 3) & ~3;
+    size_t size = stride * height * sizeof(color_t);
+
+    im.data = aligned_alloc(CACHE_LINE, size);
+    memset(im.data, 0, stride*height*sizeof(color_t));
+
+    return im;
+}
+
+struct image load_image(const char *file) {
     int x, y, n;
     color_t *image = (void *)stbi_load(file, &x, &y, &n, sizeof(color_t));
     size_t stride = (x + 3) & ~3;
@@ -64,48 +110,6 @@ struct image create_image(const char *file) {
     return (struct image) { .width = x, .height = y, .shmid = -1, .data = data };
 }
 
-struct image create_shm_image(int16_t width, int16_t height) {
-    struct image im = {
-        .width = width,
-        .height = height,
-        .shmid = -1,
-    };
-    size_t stride = (width + 3) & ~3;
-    size_t size = stride * height * sizeof(color_t);
-
-    if (ctx.has_shm) /* Only create shm image if needed */ {
-        char temp[] = "/renderer-XXXXXX";
-        int32_t attempts = 16;
-
-        do {
-            struct timespec cur;
-            clock_gettime(CLOCK_REALTIME, &cur);
-            uint64_t r = cur.tv_nsec;
-            for (int i = 0; i < 6; ++i, r >>= 5)
-                temp[6+i] = 'A' + (r & 15) + (r & 16) * 2;
-            im.shmid = shm_open(temp, O_RDWR | O_CREAT | O_EXCL, 0600);
-        } while (im.shmid < 0 && errno == EEXIST && attempts-- > 0);
-
-        shm_unlink(temp);
-
-        if (im.shmid < 0) return im;
-
-        if (ftruncate(im.shmid, size) < 0) goto error;
-
-        im.data = mmap(NULL, size, PROT_READ | PROT_WRITE, MAP_SHARED, im.shmid, 0);
-        if (im.data == MAP_FAILED) goto error;
-
-        return im;
-
-    error:
-        warn("Can't create image");
-        free_image(&im);
-        return im;
-    } else {
-        im.data = aligned_alloc(CACHE_LINE, size);
-        return im;
-    }
-}
 
 void free_image(struct image *im) {
     if (im->shmid >= 0) {
@@ -407,7 +411,7 @@ static void do_blt_aligned_scaling_linear(void *varg) {
     }
 }
 
-void image_queue_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sampler_mode mode) {
+void image_queue_blt(struct image dst, struct rect drect, struct image src, struct rect srect, enum sample_mode mode) {
     bool fastpath = srect.width == drect.width && srect.height == drect.height;
 
     ssize_t xscale = ((ssize_t)srect.width << FIXPREC)/drect.width;

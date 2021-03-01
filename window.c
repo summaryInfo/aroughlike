@@ -2,9 +2,10 @@
 
 #define _GNU_SOURCE
 
-#include "util.h"
-#include "image.h"
 #include "context.h"
+#include "image.h"
+#include "keys.h"
+#include "util.h"
 #include "worker.h"
 
 #include <assert.h>
@@ -28,7 +29,42 @@
 #include <xcb/shm.h>
 #include <xcb/xcb.h>
 
-struct context ctx;
+struct context {
+    xcb_connection_t *con;
+    xcb_screen_t *screen;
+    xcb_colormap_t mid;
+    xcb_visualtype_t *vis;
+
+    xcb_window_t wid;
+    xcb_gcontext_t gc;
+
+    xcb_shm_seg_t shm_seg;
+    xcb_pixmap_t shm_pixmap;
+
+    bool focused : 1;
+    bool active : 1;
+    bool force_redraw : 1;
+    bool has_shm : 1;
+    bool has_shm_pixmaps : 1;
+
+    struct atom_ {
+        xcb_atom_t _NET_WM_PID;
+        xcb_atom_t _NET_WM_NAME;
+        xcb_atom_t _NET_WM_ICON_NAME;
+        xcb_atom_t WM_DELETE_WINDOW;
+        xcb_atom_t WM_PROTOCOLS;
+        xcb_atom_t UTF8_STRING;
+    } atom;
+
+    xcb_get_keyboard_mapping_reply_t *keymap;
+};
+
+static struct context ctx;
+
+struct scale scale;
+struct image backbuf;
+bool want_redraw;
+bool want_exit;
 
 _Noreturn void die(const char *fmt, ...) {
     va_list args;
@@ -49,6 +85,16 @@ void warn(const char *fmt, ...) {
     va_end(args);
 }
 
+inline static bool check_void_cookie(xcb_void_cookie_t ck) {
+    xcb_generic_error_t *err = xcb_request_check(ctx.con, ck);
+    if (err) {
+        warn("[X11 Error] major=%"PRIu8", minor=%"PRIu16", error=%"PRIu8, err->major_code, err->minor_code, err->error_code);
+        return 1;
+    }
+    free(err);
+    return 0;
+}
+
 static void renderer_update(struct rect rect) {
     /* Copy back buffer to front buffer using
      * fastest method available.
@@ -62,16 +108,16 @@ static void renderer_update(struct rect rect) {
      * to the game window
      */
 
-    size_t stride = (ctx.backbuf.width + 3) & ~3;
+    size_t stride = (backbuf.width + 3) & ~3;
 
     if (ctx.has_shm_pixmaps) {
         xcb_copy_area(ctx.con, ctx.shm_pixmap, ctx.wid, ctx.gc, rect.x, rect.y, rect.x, rect.y, rect.width, rect.height);
     } else if (ctx.has_shm) {
-        xcb_shm_put_image(ctx.con, ctx.wid, ctx.gc, stride, ctx.backbuf.height, rect.x, rect.y,
+        xcb_shm_put_image(ctx.con, ctx.wid, ctx.gc, stride, backbuf.height, rect.x, rect.y,
                           rect.width, rect.height, rect.x, rect.y, 32, XCB_IMAGE_FORMAT_Z_PIXMAP, 0, ctx.shm_seg, 0);
     } else {
         xcb_put_image(ctx.con, XCB_IMAGE_FORMAT_Z_PIXMAP, ctx.wid, ctx.gc, stride, rect.height,
-                      0, rect.y, 0, 32, rect.height * stride * sizeof(color_t), (const uint8_t *)(ctx.backbuf.data+rect.y*stride));
+                      0, rect.y, 0, 32, rect.height * stride * sizeof(color_t), (const uint8_t *)(backbuf.data+rect.y*stride));
     }
 }
 
@@ -90,10 +136,10 @@ static xcb_atom_t intern_atom(const char *atom) {
 }
 
 static void resize_mitshm_image(int16_t width, int16_t height) {
-    free_image(&ctx.backbuf);
+    free_image(&backbuf);
 
-    ctx.backbuf = create_shm_image(width, height);
-    if (!ctx.backbuf.data)
+    backbuf = ctx.has_shm ? create_shm_image(width, height) : create_image(width, height);
+    if (!backbuf.data)
         die("Can't create MIT-SHM image of size %dx%d", width, height);
 
     size_t stride = (width + 3) & ~3;
@@ -107,7 +153,7 @@ static void resize_mitshm_image(int16_t width, int16_t height) {
         xcb_shm_detach(ctx.con, ctx.shm_seg);
     }
 
-    c = xcb_shm_attach_fd_checked(ctx.con, ctx.shm_seg, dup(ctx.backbuf.shmid), 0);
+    c = xcb_shm_attach_fd_checked(ctx.con, ctx.shm_seg, dup(backbuf.shmid), 0);
     if (check_void_cookie(c))
         die("Can't attach MIT-SHM image of size %dx%d", width, height);
 
@@ -160,7 +206,8 @@ static void create_window(void) {
     resize_mitshm_image(WINDOW_WIDTH, WINDOW_HEIGHT);
 
     /* And clear it with background color */
-    image_fill(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height}, BG_COLOR);
+    image_queue_fill(backbuf, (struct rect){0, 0, backbuf.width, backbuf.height}, BG_COLOR);
+    drain_work();
 
     /* Finally, map window */
     xcb_map_window(ctx.con, ctx.wid);
@@ -199,15 +246,15 @@ static void init_scale(void) {
     xcb_screen_iterator_t it = xcb_setup_roots_iterator(xcb_get_setup(ctx.con));
     for (; it.rem; xcb_screen_next(&it))
         if (it.data) dpi = MAX(dpi, (it.data->width_in_pixels * 25.4)/it.data->width_in_millimeters);
-    ctx.dpi = dpi > 0 ? dpi : 96;
-    ctx.scale = MAX(1, dpi/24);
-    ctx.interface_scale = MAX(1, dpi/32);
+    scale.dpi = dpi > 0 ? dpi : 96;
+    scale.map = MAX(1, dpi/24);
+    scale.interface = MAX(1, dpi/32);
 }
 
 static void init_context(void) {
     int screenp;
     ctx.con = xcb_connect(NULL, &screenp);
-    ctx.backbuf.shmid = -1;
+    backbuf.shmid = -1;
 
     xcb_screen_iterator_t sit = xcb_setup_roots_iterator(xcb_get_setup(ctx.con));
     for (; sit.rem; xcb_screen_next(&sit))
@@ -307,8 +354,8 @@ static void free_context(void) {
             xcb_shm_detach(ctx.con, ctx.shm_seg);
         if (ctx.has_shm_pixmaps)
             xcb_free_pixmap(ctx.con, ctx.shm_pixmap);
-        if (ctx.backbuf.data)
-            free_image(&ctx.backbuf);
+        if (backbuf.data)
+            free_image(&backbuf);
 
         xcb_free_gc(ctx.con, ctx.gc);
         xcb_destroy_window(ctx.con, ctx.wid);
@@ -325,7 +372,7 @@ static void run(void) {
         .events = POLLIN | POLLHUP,
     };
 
-    for (int64_t next_timeout = SEC; !ctx.want_exit && !xcb_connection_has_error(ctx.con);) {
+    for (int64_t next_timeout = SEC; !want_exit && !xcb_connection_has_error(ctx.con);) {
         struct timespec ts = {next_timeout / SEC, next_timeout % SEC};
         if (ppoll(&pfd, 1, &ts, NULL) < 0 && errno != EINTR)
             die("Poll error: %s", strerror(errno));
@@ -338,7 +385,7 @@ static void run(void) {
                 break;
             case XCB_CONFIGURE_NOTIFY: {
                 xcb_configure_notify_event_t *ev = (xcb_configure_notify_event_t*)event;
-                if (ev->width != ctx.backbuf.width || ev->height != ctx.backbuf.height) {
+                if (ev->width != backbuf.width || ev->height != backbuf.height) {
                     resize_mitshm_image(ev->width, ev->height);
                     ctx.force_redraw = 1;
                 }
@@ -366,7 +413,7 @@ static void run(void) {
             }
             case XCB_CLIENT_MESSAGE: {
                 xcb_client_message_event_t *ev = (xcb_client_message_event_t*)event;
-                ctx.want_exit |= ev->format == 32 && ev->data.data32[0] == ctx.atom.WM_DELETE_WINDOW;
+                want_exit |= ev->format == 32 && ev->data.data32[0] == ctx.atom.WM_DELETE_WINDOW;
                 break;
             }
             case XCB_UNMAP_NOTIFY:
@@ -401,10 +448,10 @@ static void run(void) {
         clock_gettime(CLOCK_TYPE, &cur);
         next_timeout = tick(cur);
 
-        if (ctx.want_redraw || ctx.force_redraw) {
+        if (want_redraw || ctx.force_redraw) {
             redraw(cur);
-            renderer_update((struct rect){0, 0, ctx.backbuf.width, ctx.backbuf.height});
-            ctx.want_redraw = 0;
+            renderer_update((struct rect){0, 0, backbuf.width, backbuf.height});
+            want_redraw = 0;
             ctx.force_redraw = 0;
 
 #if 1 // Performance debug reporting

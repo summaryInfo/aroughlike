@@ -4,6 +4,7 @@
 
 #include "context.h"
 #include "image.h"
+#include "keys.h"
 #include "tilemap.h"
 #include "worker.h"
 
@@ -15,14 +16,6 @@
 #include <sys/mman.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
-/* This is a copy of key sym definitions
- * file from Xlib is shipped with the
- * program in order to prevent X11 from being
- * a dependency (only libxcb and libxcb-shm are required) */
-#define XK_MISCELLANY
-#define XK_LATIN1
-#include "keysymdef.h"
 
 #define TILE_WIDTH 16
 #define TILE_HEIGHT 16
@@ -98,6 +91,7 @@ struct gamestate {
     struct timespec last_damage;
     /* Only one early tick is allowed */
     bool ticked_early;
+    bool tick_early;
     int32_t tick_n;
 
     struct input_state {
@@ -113,60 +107,60 @@ void load_map_from_file(const char *file);
 /* This is main drawing function, that is called
  * FPS times a second */
 void redraw(struct timespec current) {
-    int16_t map_x = state.camera_x + ctx.backbuf.width/2;
-    int16_t map_y = state.camera_y + ctx.backbuf.height/2;
-    int16_t map_h = ctx.scale*state.map->height*TILE_WIDTH;
-    int16_t map_w = ctx.scale*state.map->width*TILE_WIDTH;
+    int16_t map_x = state.camera_x + backbuf.width/2;
+    int16_t map_y = state.camera_y + backbuf.height/2;
+    int16_t map_h = state.map->scale*state.map->height*TILE_WIDTH;
+    int16_t map_w = state.map->scale*state.map->width*TILE_WIDTH;
 
     /* Clear screen */
-    image_queue_fill(ctx.backbuf, (struct rect){0, 0, ctx.backbuf.width, map_y}, BG_COLOR);
-    image_queue_fill(ctx.backbuf, (struct rect){0, map_y, map_x, map_h}, BG_COLOR);
-    image_queue_fill(ctx.backbuf, (struct rect){0, map_y + map_h, ctx.backbuf.width, ctx.backbuf.height - map_y - map_h}, BG_COLOR);
-    image_queue_fill(ctx.backbuf, (struct rect){map_x + map_w, map_y, ctx.backbuf.width - map_x - map_w, map_h}, BG_COLOR);
+    image_queue_fill(backbuf, (struct rect){0, 0, backbuf.width, map_y}, BG_COLOR);
+    image_queue_fill(backbuf, (struct rect){0, map_y, map_x, map_h}, BG_COLOR);
+    image_queue_fill(backbuf, (struct rect){0, map_y + map_h, backbuf.width, backbuf.height - map_y - map_h}, BG_COLOR);
+    image_queue_fill(backbuf, (struct rect){map_x + map_w, map_y, backbuf.width - map_x - map_w, map_h}, BG_COLOR);
 
     /* Draw map */
-    tilemap_queue_draw(ctx.backbuf, state.map, map_x, map_y);
+    tilemap_queue_draw(backbuf, state.map, map_x, map_y);
 
     drain_work();
 
     /* Draw player */
-    int16_t player_x = map_x + ctx.scale*state.player.x;
-    int16_t player_y = map_y + ctx.scale*state.player.y;
+    int16_t player_x = map_x + state.map->scale*state.player.x;
+    int16_t player_y = map_y + state.map->scale*state.player.y;
     tile_t player = state.player.tile;
     if (TIMEDIFF(state.last_damage, current) < SEC/2)
         player += (TILE_ID(player)/4 >= 6 ? -4 : +4);
 
-    tileset_queue_tile(ctx.backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, ctx.scale);
+    tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, state.map->scale);
 
     /* Draw invincibility timer */
     int64_t inv_total = TIMEDIFF(state.player.inv_start, state.player.inv_end);
     int64_t inv_rest = MIN(TIMEDIFF(current, state.player.inv_end), inv_total);
     if (inv_rest > 0) {
-        image_queue_fill(ctx.backbuf, (struct rect){0, 0,
-                inv_rest*ctx.backbuf.width/inv_total, 4*ctx.interface_scale}, INV_COLOR);
+        image_queue_fill(backbuf, (struct rect){0, 0,
+                inv_rest*backbuf.width/inv_total, 4*scale.interface}, INV_COLOR);
     }
 
     /* Draw lives */
     for (int i = 0; i < (state.player.lives + 1)/2; i++) {
-        int16_t px = 20 + ((state.player.lives + 1)/2 - i)*TILE_WIDTH*ctx.interface_scale/2;
+        int16_t px = 20 + ((state.player.lives + 1)/2 - i)*TILE_WIDTH*scale.interface/2;
         int16_t py = 24 - 8*(i & 1) ;
         tile_t lives_tile;
         if ((state.player.lives & 1) & !i) {
-            px -= ctx.interface_scale;
+            px -= scale.interface;
             lives_tile = inv_rest > 0 ? TILE_SIPOISON_STATIC : TILE_SPOISON_STATIC;
         } else {
             lives_tile = inv_rest > 0 ? TILE_IPOISON_STATIC : TILE_POISON_STATIC;
         }
-        tileset_queue_tile(ctx.backbuf, state.tilesets[TILESET_ID(lives_tile)],
-                           TILE_ID(lives_tile), px, py, ctx.interface_scale);
+        tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(lives_tile)],
+                           TILE_ID(lives_tile), px, py, scale.interface);
         drain_work();
     }
 
     struct tilemap *screen_to_draw = state.screens[state.state];
     if (screen_to_draw) {
-        int16_t sx = ctx.backbuf.width/2 - screen_to_draw->width*screen_to_draw->tile_width*screen_to_draw->scale/2;
-        int16_t sy = ctx.backbuf.height/2 - screen_to_draw->height*screen_to_draw->tile_height*screen_to_draw->scale/2;
-        tilemap_queue_draw(ctx.backbuf, screen_to_draw, sx, sy);
+        int16_t sx = backbuf.width/2 - screen_to_draw->width*screen_to_draw->tile_width*screen_to_draw->scale/2;
+        int16_t sy = backbuf.height/2 - screen_to_draw->height*screen_to_draw->tile_height*screen_to_draw->scale/2;
+        tilemap_queue_draw(backbuf, screen_to_draw, sx, sy);
     }
 
     drain_work();
@@ -245,16 +239,16 @@ int64_t tick(struct timespec current) {
         tilemap_random_tick(state.map);
         state.last_update = current;
         update_time = SEC/TPS;
-        ctx.want_redraw = 1;
+        want_redraw = 1;
     }
 
     int64_t tick_delta = TIMEDIFF(state.last_tick, current);
     int64_t tick_time = SEC/TPS - tick_delta;
-    if (tick_time <= 10000LL || ctx.tick_early) {
+    if (tick_time <= 10000LL || state.tick_early) {
         // Move camera towards player
 
-        double x_speed_scale = MIN(ctx.backbuf.width/5, 512)/MAX(ctx.scale, 2);
-        double y_speed_scale = MIN(ctx.backbuf.height/4, 512)/MAX(ctx.scale, 2);
+        double x_speed_scale = MIN(backbuf.width/5, 512)/MAX(state.map->scale, 2);
+        double y_speed_scale = MIN(backbuf.height/4, 512)/MAX(state.map->scale, 2);
 
         double cam_dx = -pow((state.camera_x + (state.player.x + TILE_WIDTH/2)*state.map->scale)/x_speed_scale, 3) * tick_delta / (double)(SEC/TPS) / 12;
         double cam_dy = -pow((state.camera_y + (state.player.y + TILE_HEIGHT/2)*state.map->scale)/y_speed_scale, 3) * tick_delta / (double)(SEC/TPS) / 12;
@@ -262,8 +256,8 @@ int64_t tick(struct timespec current) {
         if (fabs(cam_dx) < .8) cam_dx = 0;
         if (fabs(cam_dy) < .8) cam_dy = 0;
 
-        state.camera_x += MAX(-ctx.dpi, MIN(cam_dx, ctx.dpi));
-        state.camera_y += MAX(-ctx.dpi, MIN(cam_dy, ctx.dpi));
+        state.camera_x += MAX(-scale.dpi, MIN(cam_dx, scale.dpi));
+        state.camera_y += MAX(-scale.dpi, MIN(cam_dy, scale.dpi));
 
 
         double old_px = state.player.x;
@@ -318,13 +312,13 @@ int64_t tick(struct timespec current) {
                             }
                             set_cell(px + x, py + y, FLOOR);
                             tilemap_set_tile(state.map, px+x, py+y, 1, NOTILE);
-                            ctx.want_redraw = 1;
+                            want_redraw = 1;
                         }
                         break;
                     case VOID:
                         if (fmin(fabs(hx), fabs(hy)) > 0) {
                             state.state = s_game_over;
-                            ctx.want_redraw = 1;
+                            want_redraw = 1;
                         }
                         break;
                     case TRAP:
@@ -337,14 +331,14 @@ int64_t tick(struct timespec current) {
                                 if (state.player.lives <= 0)
                                     state.state = s_game_over;
                                 state.last_damage = current;
-                                ctx.want_redraw = 1;
+                                want_redraw = 1;
                             }
                         }
                         break;
                     case EXIT:
                         if (fmin(fabs(hx), fabs(hy)) > 0) {
                             next_level();
-                            ctx.want_redraw = 1;
+                            want_redraw = 1;
                         }
                         break;
                     }
@@ -353,13 +347,13 @@ int64_t tick(struct timespec current) {
         }
 
         state.last_tick = current;
+        state.tick_early = 0;
         tick_time = TPS/SEC;
-        ctx.tick_early = 0;
 
         bool camera_moved = cam_dx || cam_dy;
         bool player_moved = (int32_t)old_px != (int32_t)state.player.x ||
                 (int32_t)old_py != (int32_t)state.player.y;
-        ctx.want_redraw |= camera_moved || player_moved;
+        want_redraw |= camera_moved || player_moved;
     }
 
     tilemap_refresh(state.map);
@@ -379,52 +373,52 @@ void reset_game(void) {
 }
 
 /* This function is called on every key press */
-void handle_key(xcb_keycode_t kc, uint16_t st, bool pressed) {
-    xcb_keysym_t ksym = get_keysym(kc, st);
+void handle_key(uint8_t kc, uint16_t st, bool pressed) {
+    uint32_t ksym = get_keysym(kc, st);
 
     if (ksym < 0xFF && state.state == s_greet) {
-        ctx.want_redraw = 1;
+        want_redraw = 1;
         state.state = s_normal;
     }
 
     //warn("Key %x (%c) %s", ksym, ksym, pressed ? "down" : "up");
     switch (ksym) {
-    case XK_R: // Restart game
+    case k_R: // Restart game
         if (pressed) reset_game();
         break;
-    case XK_w:
-    case XK_Up:
-        ctx.tick_early = !state.keys.forward;
+    case k_w:
+    case k_Up:
+        state.tick_early = !state.keys.forward;
         state.keys.forward = pressed;
         break;
-    case XK_s:
-    case XK_Down:
-        ctx.tick_early = !state.keys.backward;
+    case k_s:
+    case k_Down:
+        state.tick_early = !state.keys.backward;
         state.keys.backward = pressed;
         break;
-    case XK_a:
-    case XK_Left:
-        ctx.tick_early = !state.keys.left;
+    case k_a:
+    case k_Left:
+        state.tick_early = !state.keys.left;
         state.keys.left = pressed;
         break;
-    case XK_d:
-    case XK_Right:
-        ctx.tick_early = !state.keys.right;
+    case k_d:
+    case k_Right:
+        state.tick_early = !state.keys.right;
         state.keys.right = pressed;
         break;
-    case XK_minus:
-        ctx.scale = MAX(1., ctx.scale - pressed);
-        tilemap_set_scale(state.map, ctx.scale);
-        ctx.want_redraw = 1;
+    case k_minus:
+        scale.map = MAX(1., scale.map - pressed);
+        tilemap_set_scale(state.map, scale.map);
+        want_redraw = 1;
         break;
-    case XK_equal:
-    case XK_plus:
-        ctx.scale = MIN(ctx.scale + pressed, 20);
-        tilemap_set_scale(state.map, ctx.scale);
-        ctx.want_redraw = 1;
+    case k_equal:
+    case k_plus:
+        scale.map = MIN(scale.map + pressed, 20);
+        tilemap_set_scale(state.map, scale.map);
+        want_redraw = 1;
         break;
-    case XK_Escape:
-        ctx.want_exit = 1;
+    case k_Escape:
+        want_exit = 1;
         break;
     }
 }
@@ -578,7 +572,7 @@ format_error:
 
     if (state.map) free_tilemap(state.map);
     state.map = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
-    tilemap_set_scale(state.map, ctx.scale);
+    tilemap_set_scale(state.map, scale.map);
 
     int16_t x = 0, y = 0;
     for (char *ptr = addr, c; (c = *ptr); ptr++) {
@@ -639,7 +633,7 @@ format_error:
         }
     }
 
-    state.camera_y = state.camera_x = 50*ctx.scale;
+    state.camera_y = state.camera_x = 50*scale.map;
 }
 
 #define MBOX_WIDTH 20
@@ -666,7 +660,7 @@ struct tilemap *create_screen(size_t width, size_t height) {
             tilemap_set_tile(map, x, y, 0, tile);
         }
     }
-    tilemap_set_scale(map, ctx.interface_scale/2);
+    tilemap_set_scale(map, scale.interface/2);
     return map;
 }
 
