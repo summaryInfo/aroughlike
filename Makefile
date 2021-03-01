@@ -1,6 +1,6 @@
 NAME ?= game
 
-CFLAGS= -O3 -flto -march=native -g -ffast-math -pthread
+CFLAGS= -O3 -flto -march=native -g -pthread
 
 CFLAGS += -std=c11 -Wall -Wextra -Wpedantic
 CFLAGS += -Wno-unknown-warning -Wno-unknown-warning-option
