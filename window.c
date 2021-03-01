@@ -57,6 +57,7 @@ struct context {
     } atom;
 
     xcb_get_keyboard_mapping_reply_t *keymap;
+    bool en_group;
 };
 
 static struct context ctx;
@@ -224,6 +225,24 @@ static void configure_keyboard(void) {
         free(err);
         die("Can't get keyboard mapping: major=%d minor=%d error=%d", err->major_code, err->minor_code, err->error_code);
     }
+
+    /* We need to find ASCII layout in order to implement
+     * layout independent controls */
+
+    xcb_keysym_t *ksyms = xcb_get_keyboard_mapping_keysyms(ctx.keymap);
+    size_t ksym_per_kc = ctx.keymap->keysyms_per_keycode;
+    size_t minkc = xcb_get_setup(ctx.con)->max_keycode;
+    size_t maxkc = xcb_get_setup(ctx.con)->min_keycode;
+    for (size_t i = minkc; i < maxkc; i++) {
+        for (size_t j = 0; j < MIN(ksym_per_kc, 4); j++) {
+            uint32_t ks = ksyms[i*ksym_per_kc+j];
+            if ((ks >= 'A' && ks <= 'Z') || (ks >= 'a' && ks <= 'z')) {
+                ctx.en_group = j/2;
+                return;
+            }
+        }
+    }
+
 }
 
 xcb_keysym_t get_keysym(xcb_keycode_t kc, uint32_t state) {
@@ -235,7 +254,9 @@ xcb_keysym_t get_keysym(xcb_keycode_t kc, uint32_t state) {
     size_t ksym_per_kc = ctx.keymap->keysyms_per_keycode;
 
     xcb_keysym_t *entry = &ksyms[ksym_per_kc * (kc - xcb_get_setup(ctx.con)->min_keycode)];
-    bool group = ksym_per_kc >= 3 && state & mask_mod_5 && entry[2];
+
+    // Use ASCII layout for decoding
+    bool group = ctx.en_group; //ksym_per_kc >= 3 && state & mask_mod_5 && entry[2];
     bool shift = ksym_per_kc >= 2 && state & mask_shift && entry[1];
 
     return entry[2*group + shift];
