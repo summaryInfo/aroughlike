@@ -443,7 +443,7 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
 
     //warn("Key %x (%c) %s", ksym, ksym, pressed ? "down" : "up");
     switch (ksym) {
-    case k_R: // Restart game
+    case k_Delete: // Restart game
         if (pressed) reset_game();
         break;
     case k_w:
@@ -726,7 +726,7 @@ void draw_message(struct tilemap *map, size_t x, size_t y, const char *message) 
 static struct tilemap *create_death_screen(void) {
     struct tilemap *map = create_screen(STATIC_SCREEN_WIDTH, STATIC_SCREEN_HEIGHT);
     draw_message(map, 6, 2, "YOU DIED");
-    draw_message(map, 1, 3, "Press R to restart");
+    draw_message(map, 0, 3, "Press DEL to restart");
     draw_message(map, 3, 4, "or ESC to exit");
     for (size_t y = 0; y < map->height; y++) {
         for (size_t x = 0; x < map->width; x++) {
@@ -751,7 +751,7 @@ static struct tilemap *create_win_screen(void) {
     tilemap_set_tile(map, STATIC_SCREEN_WIDTH - 1, STATIC_SCREEN_HEIGHT - 1, 1, TILE_FLAG_TOP);
     draw_message(map, 6, 2, "YOU WON");
     draw_message(map, 2, 3, "Congratulations!");
-    draw_message(map, 1, 4, "Press R to restart");
+    draw_message(map, 0, 4, "Press DEL to restart");
     draw_message(map, 3, 5, "or ESC to exit");
     tilemap_refresh(map);
     return map;
@@ -767,7 +767,7 @@ static struct tilemap *create_greet_screen(void) {
     tilemap_set_tile(map, 4, 2, 1, TILE_DOOR_LEFT);
     tilemap_set_tile(map, 15, 2, 1, TILE_DOOR_RIGHT);
     draw_message(map, 5, 2, "GREETINGS!");
-    draw_message(map, 11, 4, "ESC wR");
+    draw_message(map, 11, 4, "ESC w");
     draw_message(map, 14, 5, "asd");
     tilemap_refresh(map);
     return map;

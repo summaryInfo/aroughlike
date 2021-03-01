@@ -22,7 +22,7 @@ Blending code requires SSE4.1
  * `a` -- move left
  * `s` -- move backward
  * `d` -- move right
- * `R` -- reset game
+ * `DEL` -- reset game
  * `ESC` -- exit game
  * `+`/`=` -- zoom-in
  * `-` -- zoom-out
