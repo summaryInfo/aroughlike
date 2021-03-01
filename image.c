@@ -251,8 +251,8 @@ static FORCEINLINE inline color_t image_sample(struct image src, ssize_t x, ssiz
 
     ssize_t x1 = MIN((x + (1LL << FIXPREC) - 1) >> FIXPREC, src.width - 1);
     ssize_t y1 = MIN((y + (1LL << FIXPREC) - 1) >> FIXPREC, src.height - 1);
-    double valpha = (y & ((1LL << FIXPREC) - 1))/(double)(1LL << FIXPREC);
-    double halpha = (x & ((1LL << FIXPREC) - 1))/(double)(1LL << FIXPREC);
+    ssize_t valpha = y & ((1LL << FIXPREC) - 1);
+    ssize_t halpha = x & ((1LL << FIXPREC) - 1);
 
     y0 *= sstride;
     y1 *= sstride;

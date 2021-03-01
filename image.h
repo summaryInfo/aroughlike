@@ -35,7 +35,7 @@ FORCEINLINE inline static color_t mk_color(uint8_t r, uint8_t g, uint8_t b, uint
 }
 
 FORCEINLINE inline static color_t color_blend(color_t dstc, color_t srcc) {
-    double alpha = 255 - color_a(srcc);
+    ssize_t alpha = 255 - color_a(srcc);
     return mk_color(
             alpha*color_r(dstc)/255 + color_r(srcc),
             alpha*color_g(dstc)/255 + color_g(srcc),
