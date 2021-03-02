@@ -199,22 +199,22 @@ char *generate_map(int32_t width, int32_t height) {
     for (ssize_t y = 0; y < height; y++) {
         for (ssize_t x = 0; x < width; x++) {
             if (c_get(&state, x, y) == '.') {
-                int r = rand() % 345;
+                int r = rand() % 3000;
                 switch (r) {
-                case 4:
+                case 0:
                     c_set(&state, x, y, 'P');
                     break;
-                case 5:
+                case 3: case 4: case 5: case 6:  case 2:
                     c_set(&state, x, y, 'p');
                     break;
-                case 6:
+                case 8: case 9:
                     c_set(&state, x, y, 'I');
                     break;
-                case 7:
+                case 10: case 11: case 12:
                     c_set(&state, x, y, 'i');
                     break;
                 default:
-                    if (r > 300) c_set(&state, x, y, 'T');
+                    if (r > 2820) c_set(&state, x, y, 'T');
                 }
             }
         }
