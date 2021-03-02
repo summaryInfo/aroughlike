@@ -85,7 +85,17 @@
 #define TILE_WALL_BOTTOM_LEFT_EX(x)  MKTILE(TILESET_STATIC,   10 * 5 + 3 + 2 * ((x) & 1))
 #define TILE_WALL_BOTTOM_RIGHT_EX(x) MKTILE(TILESET_STATIC,   10 * 5 + 4 * ((x) & 1))
 
-#define TILE_PLAYER_(x)              MKTILE(TILESET_ENTITIES,  4 * (2 * ((r) % 7) + ((r % 7) > 2)) + 3);
+#define TILE_PLAYER_LEFT_(x)         MKTILE(TILESET_ENTITIES,  4 * ((x) % 7) + 0)
+#define TILE_PLAYER_RIGHT_(x)        MKTILE(TILESET_ENTITIES,  4 * (16 + (x) % 7) + 0)
+#define TILE_PLAYER_MOVING_LEFT_(x)  MKTILE(TILESET_ENTITIES,  4 * (8 + (x) % 7) + 0)
+#define TILE_PLAYER_MOVING_RIGHT_(x) MKTILE(TILESET_ENTITIES,  4 * (24 + (x) % 7) + 0)
+
+#define TILE_PLAYER_DAMAGE           MKTILE(TILESET_ENTITIES,  4 * 7 + 0)
+#define TILE_PLAYER_INV_DAMAGE       MKTILE(TILESET_ENTITIES,  4 * 15 + 0)
+
+#define ANIMATION_FRAME(x) ((x) & 3)
+#define PLAYER_VARIANT(x) (((x) / 4) & 7)
+#define PLAYER_DIRECTION(x) (((x)/64) & 1)
 
 #define WALL '#'
 #define TRAP 'T'
@@ -116,9 +126,6 @@ struct frect {
 
 struct gamestate {
     struct tilemap *map;
-    struct tilemap *death_screen;
-    struct tilemap *win_screen;
-    struct tilemap *greet_screen;
     struct tileset *tilesets[NTILESETS];
 
     double camera_x;
@@ -150,6 +157,7 @@ struct gamestate {
     struct timespec last_tick;
     struct timespec last_frame;
     bool tick_early;
+    bool want_redraw;
     size_t tick_n;
 
     /* FPS stats */
@@ -174,9 +182,13 @@ struct tileset_desc {
 
 static void load_map_from_file(const char *file);
 
-static void queue_fps(struct timespec current) {
-    state.avg_delta = TIMEDIFF(state.last_frame, current)*0.01 + state.avg_delta*0.99;
+static void update_fps(struct timespec current, bool need_update) {
+    if (need_update)
+        state.avg_delta = TIMEDIFF(state.last_frame, current)*0.01 + state.avg_delta*0.99;
     state.last_frame = current;
+}
+
+static void queue_fps(void) {
     int64_t fps = SEC/state.avg_delta, i = 0;
     do {
         tileset_queue_tile(backbuf, state.tilesets[TILESET_ASCII], '0' + (fps % 10),
@@ -184,9 +196,10 @@ static void queue_fps(struct timespec current) {
     } while (fps /= 10);
 }
 
-/* This is main drawing function, that is called
- * FPS times a second */
-void redraw(struct timespec current) {
+bool redraw(struct timespec current, bool force) {
+    update_fps(current, state.want_redraw || force);
+    if (!state.want_redraw && !force) return 0;
+
     int32_t map_x = state.camera_x + backbuf.width/2;
     int32_t map_y = state.camera_y + backbuf.height/2;
     int32_t map_h = state.map->scale*state.map->height*TILE_WIDTH;
@@ -207,8 +220,6 @@ void redraw(struct timespec current) {
     int32_t player_x = map_x + state.map->scale*state.player.box.x;
     int32_t player_y = map_y + state.map->scale*state.player.box.y;
     tile_t player = state.player.tile;
-    if (TIMEDIFF(state.player.last_damage, current) < SEC/2)
-        player += (TILE_ID(player)/4 >= 6 ? -4 : +4);
 
     tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, state.map->scale);
 
@@ -220,7 +231,13 @@ void redraw(struct timespec current) {
                 inv_rest*backbuf.width/inv_total, 4*scale.interface}, INV_COLOR);
     }
 
-    queue_fps(current);
+    queue_fps();
+    drain_work();
+
+    if (TIMEDIFF(state.player.last_damage, current) < 2*SEC/3) {
+        tile_t dmg = (inv_rest > 0 ? TILE_PLAYER_INV_DAMAGE : TILE_PLAYER_DAMAGE) + ANIMATION_FRAME(player);
+        tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(dmg)], TILE_ID(dmg), player_x, player_y, state.map->scale);
+    }
 
     /* Draw lives */
     for (int i = 0; i < (state.player.lives + 1)/2; i++) {
@@ -247,6 +264,7 @@ void redraw(struct timespec current) {
     }
 
     drain_work();
+    return 1;
 }
 
 inline static void next_level(void) {
@@ -305,14 +323,10 @@ inline static struct frect get_bounding_box_for(char cell, int32_t x, int32_t y)
 }
 
 
-/* This function is called TPS times a second
- * (this is a place where all game logic resides) */
 int64_t tick(struct timespec current) {
-    //int64_t fps = MIN(SEC*state.tick_n/TIMEDIFF(state.fps_start, current), FPS);
-    int64_t update_time = SEC/FPS - TIMEDIFF(state.last_update, current);
-
+    int64_t update_time = SEC/TPS - TIMEDIFF(state.last_update, current);
     if (update_time <= 10000LL) {
-        if (state.tick_n % (FPS/6) == 0) {
+        if (!(state.tick_n % 6)) {
             // Anitmation plays
             // at conanstant rate
             tilemap_animation_tick(state.map);
@@ -323,13 +337,11 @@ int64_t tick(struct timespec current) {
             struct tile *tile = &state.tilesets[TILESET_ID(state.player.tile)]->tiles[TILE_ID(state.player.tile)];
             state.player.tile = MKTILE(TILESET_ID(state.player.tile), tile->next_frame);
         }
-        if (state.tick_n % (FPS/60) == 0) {
-            tilemap_random_tick(state.map);
-        }
+        tilemap_random_tick(state.map);
         state.last_update = current;
-        update_time = SEC/FPS;
+        update_time = SEC/TPS;
         state.tick_n++;
-        want_redraw = 1;
+        state.want_redraw = 1;
     }
 
     int64_t tick_delta = TIMEDIFF(state.last_tick, current);
@@ -401,38 +413,59 @@ int64_t tick(struct timespec current) {
                                 TIMEINC(state.player.inv_end, inc);
                             }
                             tilemap_set_tile(state.map, x, y, 1, NOTILE);
-                            want_redraw = 1;
+                            state.want_redraw = 1;
                         }
                         break;
                     case VOID:
                         if (fmin(fabs(hx), fabs(hy)) > 0) {
                             state.state = s_game_over;
-                            want_redraw = 1;
+                            state.want_redraw = 1;
                         }
                         break;
                     case ACTIVETRAP:
                         if (fmin(fabs(hx), fabs(hy)) > 0) {
                             bool damaged_recently = TIMEDIFF(state.player.last_damage, current) < SEC;
                             bool invincible = TIMEDIFF(state.player.inv_end, current) < 0;
-                            if (!damaged_recently && !invincible) {
-                                state.player.lives -= 2;
-                                if (state.player.lives <= 0)
-                                    state.state = s_game_over;
+                            if (!damaged_recently) {
+                                if (!invincible) {
+                                    state.player.lives -= 2;
+                                    if (state.player.lives <= 0)
+                                        state.state = s_game_over;
+                                }
                                 state.player.last_damage = current;
-                                want_redraw = 1;
+                                state.want_redraw = 1;
                             }
                         }
                         break;
                     case EXIT:
                         if (fmin(fabs(hx), fabs(hy)) > 0) {
                             next_level();
-                            want_redraw = 1;
+                            state.want_redraw = 1;
                         }
                         break;
                     }
                 }
             }
+
+            // Select right tile depending on player behaviour
+
+            dx = state.player.box.x - old_px;
+            dy = state.player.box.y - old_py;
+            tile_t frame = ANIMATION_FRAME(state.player.tile);
+            tile_t variant = PLAYER_VARIANT(state.player.tile);
+            if (dx > 0.01) {
+                state.player.tile = TILE_PLAYER_MOVING_LEFT_(variant) + frame;
+            } else if (dx < -0.01) {
+                state.player.tile = TILE_PLAYER_MOVING_RIGHT_(variant) + frame;
+            } else if (fabs(dy) > 0.01) {
+                state.player.tile = (PLAYER_DIRECTION(state.player.tile) ?
+                    TILE_PLAYER_MOVING_RIGHT_(variant) : TILE_PLAYER_MOVING_LEFT_(variant)) + frame;
+            } else {
+                state.player.tile = (PLAYER_DIRECTION(state.player.tile) ?
+                    TILE_PLAYER_RIGHT_(variant) : TILE_PLAYER_LEFT_(variant)) + frame;
+            }
         }
+
 
         state.last_tick = current;
         state.tick_early = 0;
@@ -441,7 +474,7 @@ int64_t tick(struct timespec current) {
         bool camera_moved = cam_dx || cam_dy;
         bool player_moved = (int32_t)old_px != (int32_t)state.player.box.x ||
                 (int32_t)old_py != (int32_t)state.player.box.y;
-        want_redraw |= camera_moved || player_moved;
+        state.want_redraw |= camera_moved || player_moved;
     }
 
     tilemap_refresh(state.map);
@@ -457,7 +490,7 @@ static void reset_game(void) {
 
     // Select random player model
     int r = rand();
-    state.player.tile = TILE_PLAYER_(r);
+    state.player.tile = TILE_PLAYER_LEFT_(r);
 }
 
 /* This function is called on every key press */
@@ -465,7 +498,7 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
     uint32_t ksym = get_keysym(kc, st);
 
     if (ksym < 0xFF && state.state == s_greet) {
-        want_redraw = 1;
+        state.want_redraw = 1;
         state.state = s_normal;
     }
 
@@ -497,13 +530,13 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
     case k_minus:
         scale.map = MAX(1., scale.map - pressed);
         tilemap_set_scale(state.map, scale.map);
-        want_redraw = 1;
+        state.want_redraw = 1;
         break;
     case k_equal:
     case k_plus:
         scale.map = MIN(scale.map + pressed, 20);
         tilemap_set_scale(state.map, scale.map);
-        want_redraw = 1;
+        state.want_redraw = 1;
         break;
     case k_Escape:
         want_exit = 1;
@@ -762,7 +795,6 @@ static struct tilemap *create_death_screen(void) {
             if (r/2 % 7 == 0) {
                 tilemap_set_tile(map, x, y, 1, r & 1 ? TILE_BONES_1 : TILE_BONES_2);
             }
-
         }
     }
     tilemap_refresh(map);
@@ -842,7 +874,7 @@ static void init_tiles(void) {
     static const struct tileset_desc tileset_descs[NTILESETS] = {
         {"data/tiles.png", 10, 10, 0, TILESET_STATIC},
         {"data/ani.png", 4, 27, 1, TILESET_ANIMATED},
-        {"data/ent.png", 4, 14, 1, TILESET_ENTITIES},
+        {"data/ent2.png", 4, 32, 1, TILESET_ENTITIES},
         {"data/ascii.png", 16, 16, 0, TILESET_ASCII},
     };
 
@@ -856,7 +888,7 @@ static void init_tiles(void) {
     } types[] = {
         { TILE_VOID, VOID },
         { TILE_EXIT, EXIT },
-        { TILE_TRAP, TRAP | TILE_TYPE_RANDOM | (83 << 16) },
+        { TILE_TRAP, TRAP | TILE_TYPE_RANDOM | (42 << 16) },
         { TILE_TRAP_0, ACTIVETRAP },
         { TILE_TRAP_1, ACTIVETRAP },
         { TILE_TRAP_2, ACTIVETRAP },

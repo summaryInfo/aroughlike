@@ -64,7 +64,6 @@ static struct context ctx;
 
 struct scale scale;
 struct image backbuf;
-bool want_redraw;
 bool want_exit;
 
 _Noreturn void die(const char *fmt, ...) {
@@ -469,10 +468,8 @@ static void run(void) {
         clock_gettime(CLOCK_TYPE, &cur);
         next_timeout = tick(cur);
 
-        if (want_redraw || ctx.force_redraw) {
-            redraw(cur);
+        if (redraw(cur, ctx.force_redraw)) {
             renderer_update((struct rect){0, 0, backbuf.width, backbuf.height});
-            want_redraw = 0;
             ctx.force_redraw = 0;
         }
 

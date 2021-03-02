@@ -14,6 +14,7 @@
 #define WINDOW_WIDTH 640
 #define WINDOW_HEIGHT 480
 #define FPS 300
+#define TPS 24
 
 #define WINDOW_CLASS "SoftRendererExa"
 #define WINDOW_TITLE "Rough-like with software rendering"
@@ -26,7 +27,6 @@ struct scale {
     double dpi;
 };
 
-extern bool want_redraw;
 extern bool want_exit;
 extern struct scale scale;
 extern struct image backbuf;
@@ -34,7 +34,7 @@ extern struct image backbuf;
 /* Callbacks from game.c */
 void init(void);
 void cleanup(void);
-void redraw(struct timespec current);
+bool redraw(struct timespec current, bool force);
 int64_t tick(struct timespec current);
 void handle_key(uint8_t kc, uint32_t state, bool pressed);
 
