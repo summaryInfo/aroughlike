@@ -474,13 +474,6 @@ static void run(void) {
             renderer_update((struct rect){0, 0, backbuf.width, backbuf.height});
             want_redraw = 0;
             ctx.force_redraw = 0;
-
-#if 0 // Performance debug reporting
-            struct timespec end;
-            clock_gettime(CLOCK_TYPE, &end);
-            int64_t dt = TIMEDIFF(cur, end);
-            warn("Dt = \033[1;%dm%d\033[m", (dt <= 15*SEC/10000LL) + 31, (int)(dt/(SEC/10000LL)));
-#endif
         }
 
         xcb_flush(ctx.con);
