@@ -237,11 +237,15 @@ bool redraw(struct timespec current, bool force) {
                 inv_rest*backbuf.width/inv_total, 4*scale.interface}, INV_COLOR);
     }
 
+    /* Draw fps counter */
     queue_fps();
     drain_work();
 
+    /* Draw damage indicators */
     int64_t dmg_diff = TIMEDIFF(state.player.last_damage, current);
     if (dmg_diff < DMG_ANI_DUR) {
+        // Damge indicators are blue for absorbed damage
+        // and red for effective
         tile_t dmg = (state.player.inv_at_damge_start ? TILE_PLAYER_INV_DAMAGE : TILE_PLAYER_DAMAGE) + (4*dmg_diff/(SEC/3));
         tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(dmg)], TILE_ID(dmg), player_x, player_y, state.map->scale);
     }
