@@ -632,8 +632,8 @@ static tile_t decode_wall(const char *m, ssize_t w, ssize_t h, int x, int y) {
     case 3: return TILE_WALL_BOTTOM_(r);
     case 4: case 5: return TILE_WALL_LEFT_(r);
     case 8: case 10: return TILE_WALL_RIGHT_(r);
-    case 7: case 13: return TILE_WALL_BOTTOM_LEFT_EX(r);
-    case 6: case 9: case 11: case 14:return TILE_WALL_BOTTOM_RIGHT_EX(r);
+    case 7: case 9: case 13: return TILE_WALL_BOTTOM_LEFT_EX(r);
+    case 6: case 11: case 14:return TILE_WALL_BOTTOM_RIGHT_EX(r);
     }
 
     return TILE_WALL_LEFT_RIGHT;
