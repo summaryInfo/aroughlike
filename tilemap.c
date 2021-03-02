@@ -195,21 +195,26 @@ uint32_t tilemap_get_tiletype(struct tilemap *map, int32_t x, int32_t y, int32_t
     return tile->type;
 }
 
-void tilemap_animation_tick(struct tilemap *map) {
+bool tilemap_animation_tick(struct tilemap *map) {
+    bool any = 0;
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
             for (size_t zi = 0; zi < TILEMAP_LAYERS; zi++) {
                 tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, zi);
                 if (tileid == NOTILE) continue;
                 struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
-                if ((tile->type & (TILE_TYPE_ANIMATED | TILE_TYPE_RANDOM)) == TILE_TYPE_ANIMATED && tileid != tile->next_frame)
+                if ((tile->type & (TILE_TYPE_ANIMATED | TILE_TYPE_RANDOM)) == TILE_TYPE_ANIMATED && tileid != tile->next_frame) {
                     tilemap_set_tile_unsafe(map, xi, yi, zi, MKTILE(TILESET_ID(tileid), tile->next_frame));
+                    any = 1;
+                }
             }
         }
     }
+    return any;
 }
 
-void tilemap_random_tick(struct tilemap *map) {
+bool tilemap_random_tick(struct tilemap *map) {
+    bool any = 0;
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
             tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, 0);
@@ -217,6 +222,8 @@ void tilemap_random_tick(struct tilemap *map) {
             struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
             if (!(tile->type & TILE_TYPE_RANDOM) || (rand() % TILE_TYPE_DIV(tile->type)) != 1) continue;
             tilemap_set_tile_unsafe(map, xi, yi, 0, MKTILE(TILESET_ID(tileid), tile->next_frame));
+            any = 1;
         }
     }
+    return any;
 }

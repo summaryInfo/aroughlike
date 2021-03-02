@@ -65,8 +65,8 @@ tile_t tilemap_set_tile(struct tilemap *map, int32_t x, int32_t y, int32_t layer
 void tilemap_set_scale(struct tilemap *map, double scale);
 tile_t tilemap_get_tile(struct tilemap *map, int32_t x, int32_t y, int32_t layer);
 uint32_t tilemap_get_tiletype(struct tilemap *map, int32_t x, int32_t y, int32_t layer);
-void tilemap_animation_tick(struct tilemap *map);
-void tilemap_random_tick(struct tilemap *map);
+bool tilemap_animation_tick(struct tilemap *map);
+bool tilemap_random_tick(struct tilemap *map);
 void tilemap_refresh(struct tilemap *map);
 
 #endif
