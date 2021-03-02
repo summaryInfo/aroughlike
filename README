@@ -27,7 +27,10 @@ Blending code requires SSE4.1
  * `+`/`=` -- zoom-in
  * `-` -- zoom-out
 
-TIP: You can move diagonally
+There's 10 levels in the game
+If there's a file named data/map_N.txt
+then it is loaded as a map.
+Otherwise map is generated procedurally.
 
 ## Building and running 
 
