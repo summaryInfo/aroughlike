@@ -119,7 +119,7 @@
 #define CAM_SPEED (5e-8/12)
 #define PLAYER_SPEED (6e-8)
 
-struct frect {
+struct box {
     double x;
     double y;
     double width;
@@ -134,10 +134,11 @@ struct gamestate {
     double camera_y;
 
     struct player {
-        struct frect box;
+        struct box box;
         tile_t tile;
         int lives;
         // End of invincibility
+        bool inv_at_damge_start;
         struct timespec inv_end;
         struct timespec inv_start;
         struct timespec last_damage;
@@ -162,7 +163,6 @@ struct gamestate {
     bool tick_early;
     bool want_redraw;
     bool last_redrawn;
-    size_t tick_n;
 
     /* FPS stats */
     double avg_delta;
@@ -242,7 +242,7 @@ bool redraw(struct timespec current, bool force) {
 
     int64_t dmg_diff = TIMEDIFF(state.player.last_damage, current);
     if (dmg_diff < DMG_ANI_DUR) {
-        tile_t dmg = (inv_rest > 0 ? TILE_PLAYER_INV_DAMAGE : TILE_PLAYER_DAMAGE) + (4*dmg_diff/(SEC/3));
+        tile_t dmg = (state.player.inv_at_damge_start ? TILE_PLAYER_INV_DAMAGE : TILE_PLAYER_DAMAGE) + (4*dmg_diff/(SEC/3));
         tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(dmg)], TILE_ID(dmg), player_x, player_y, state.map->scale);
     }
 
@@ -292,8 +292,8 @@ inline static char get_tiletype(int x, int y) {
     return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(state.map, x, y, 0)) : type;
 }
 
-inline static struct frect get_bounding_box_for(char cell, int32_t x, int32_t y) {
-    struct frect bb = {x*TILE_HEIGHT, y*TILE_WIDTH, TILE_WIDTH, TILE_HEIGHT};
+inline static struct box get_bounding_box_for(char cell, int32_t x, int32_t y) {
+    struct box bb = {x*TILE_HEIGHT, y*TILE_WIDTH, TILE_WIDTH, TILE_HEIGHT};
     switch (cell) {
     case WALL:
         if (get_tiletype(x, y + 1) != WALL) bb.height /= 2;
@@ -303,14 +303,14 @@ inline static struct frect get_bounding_box_for(char cell, int32_t x, int32_t y)
         else if (left != VOID && right == VOID) bb.width /= 2;
         break;
     case TRAP:
-        return (struct frect) {
+        return (struct box) {
             x*TILE_WIDTH + TILE_WIDTH/4,
             y*TILE_HEIGHT + TILE_HEIGHT/4,
             TILE_WIDTH/2, TILE_WIDTH/2,
         };
     case EXIT:
     case VOID:
-        return (struct frect) {
+        return (struct box) {
             x*TILE_WIDTH + TILE_WIDTH/2,
             y*TILE_HEIGHT + TILE_HEIGHT/2,
             0, 0,
@@ -319,7 +319,7 @@ inline static struct frect get_bounding_box_for(char cell, int32_t x, int32_t y)
     case IPOISON:
     case SPOISON:
     case SIPOISON:
-        return (struct frect) {
+        return (struct box) {
             x*TILE_WIDTH + TILE_WIDTH/3,
             y*TILE_HEIGHT + TILE_HEIGHT/3,
             TILE_WIDTH/3, TILE_WIDTH/3,
@@ -387,8 +387,8 @@ static bool move_player(int64_t tick_delta, struct timespec current) {
     for (int32_t y = py; y <= py + 1; y++) {
         for (int32_t x = px; x <= px + 1; x++) {
             char cell = get_tiletype(x, y);
-            struct frect b = get_bounding_box_for(cell, x, y);
-            struct frect p = state.player.box;
+            struct box b = get_bounding_box_for(cell, x, y);
+            struct box p = state.player.box;
             /* Signed depths for x and y axes.
              * They are equal to the distance player
              * should be moved to not intersect with
@@ -430,6 +430,7 @@ static bool move_player(int64_t tick_delta, struct timespec current) {
                     bool damaged_recently = TIMEDIFF(state.player.last_damage, current) < DMG_DUR;
                     if (!damaged_recently) {
                         bool invincible = TIMEDIFF(state.player.inv_end, current) < 0;
+                        state.player.inv_at_damge_start = invincible;
                         if (!invincible) {
                             state.player.lives -= 2;
                             if (state.player.lives <= 0)
@@ -978,7 +979,6 @@ void init(void) {
     state.state = s_greet;
     state.player.box.width = TILE_WIDTH;
     state.player.box.height = TILE_HEIGHT;
-    state.tick_n = 1;
     state.avg_delta = SEC/FPS;
     clock_gettime(CLOCK_TYPE, &state.last_frame);
     TIMEINC(state.last_frame, -(int64_t)state.avg_delta);

@@ -15,7 +15,7 @@
 #define WINDOW_HEIGHT 480
 #define FPS 300
 #define TPS 24
-#define UPS 8
+#define UPS 6
 
 #define WINDOW_CLASS "SoftRendererExa"
 #define WINDOW_TITLE "Rough-like with software rendering"
