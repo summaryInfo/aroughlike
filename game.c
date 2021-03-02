@@ -522,6 +522,15 @@ static void reset_game(void) {
     state.player.tile = TILE_PLAYER_LEFT_(r);
 }
 
+inline static void change_scale(double inc) {
+    double old_scale = scale.map;
+    scale.map = MAX(1., MIN(scale.map + inc, 20));
+    state.camera_x = state.camera_x*scale.map/old_scale;
+    state.camera_y = state.camera_y*scale.map/old_scale;
+    tilemap_set_scale(state.map, scale.map);
+    state.want_redraw = 1;
+}
+
 /* This function is called on every key press */
 void handle_key(uint8_t kc, uint32_t st, bool pressed) {
     uint32_t ksym = get_keysym(kc, st);
@@ -557,15 +566,11 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
         state.keys.right = pressed;
         break;
     case k_minus:
-        scale.map = MAX(1., scale.map - pressed);
-        tilemap_set_scale(state.map, scale.map);
-        state.want_redraw = 1;
+        if (pressed) change_scale(-1);
         break;
     case k_equal:
     case k_plus:
-        scale.map = MIN(scale.map + pressed, 20);
-        tilemap_set_scale(state.map, scale.map);
-        state.want_redraw = 1;
+        if (pressed) change_scale(1);
         break;
     case k_Escape:
         want_exit = 1;
