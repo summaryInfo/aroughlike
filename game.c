@@ -120,6 +120,8 @@
 #define CAM_SPEED (5e-8/12)
 #define PLAYER_SPEED (6e-8)
 
+#define MAX_LEVEL 10
+
 struct box {
     double x;
     double y;
@@ -174,7 +176,7 @@ struct gamestate {
         bool left : 1;
         bool right : 1;
     } keys;
-} state;
+} game;
 
 struct tileset_desc {
     const char *path;
@@ -184,33 +186,33 @@ struct tileset_desc {
 };
 
 
-static void load_map_from_file(const char *file);
+static void load_map(const char *file, bool generated);
 
 static void update_fps(struct timespec current, bool need_update) {
-    if (need_update && state.last_redrawn)
-        state.avg_delta = TIMEDIFF(state.last_frame, current)*0.01 + state.avg_delta*0.99;
+    if (need_update && game.last_redrawn)
+        game.avg_delta = TIMEDIFF(game.last_frame, current)*0.01 + game.avg_delta*0.99;
     if (need_update)
-        state.last_frame = current;
-    state.last_redrawn = need_update;
+        game.last_frame = current;
+    game.last_redrawn = need_update;
 }
 
 static void queue_fps(void) {
-    int64_t fps = SEC/state.avg_delta, i = 0;
+    int64_t fps = SEC/game.avg_delta, i = 0;
     do {
-        tileset_queue_tile(backbuf, state.tilesets[TILESET_ASCII], '0' + (fps % 10),
+        tileset_queue_tile(backbuf, game.tilesets[TILESET_ASCII], '0' + (fps % 10),
                 backbuf.width - scale.interface/2*TILE_WIDTH*++i - 20, 20, scale.interface/2);
     } while (fps /= 10);
 }
 
 bool redraw(struct timespec current, bool force) {
-    update_fps(current, state.want_redraw || force);
-    if (!state.want_redraw && !force) return 0;
-    state.want_redraw = 0;
+    update_fps(current, game.want_redraw || force);
+    if (!game.want_redraw && !force) return 0;
+    game.want_redraw = 0;
 
-    int32_t map_x = state.camera_x + backbuf.width/2;
-    int32_t map_y = state.camera_y + backbuf.height/2;
-    int32_t map_h = state.map->scale*state.map->height*TILE_WIDTH;
-    int32_t map_w = state.map->scale*state.map->width*TILE_WIDTH;
+    int32_t map_x = game.camera_x + backbuf.width/2;
+    int32_t map_y = game.camera_y + backbuf.height/2;
+    int32_t map_h = game.map->scale*game.map->height*TILE_WIDTH;
+    int32_t map_w = game.map->scale*game.map->width*TILE_WIDTH;
 
     /* Clear screen */
     image_queue_fill(backbuf, (struct rect){0, 0, backbuf.width, map_y}, BG_COLOR);
@@ -219,20 +221,20 @@ bool redraw(struct timespec current, bool force) {
     image_queue_fill(backbuf, (struct rect){map_x + map_w, map_y, backbuf.width - map_x - map_w, map_h}, BG_COLOR);
 
     /* Draw map */
-    tilemap_queue_draw(backbuf, state.map, map_x, map_y);
+    tilemap_queue_draw(backbuf, game.map, map_x, map_y);
 
     drain_work();
 
     /* Draw player */
-    int32_t player_x = map_x + state.map->scale*state.player.box.x;
-    int32_t player_y = map_y + state.map->scale*state.player.box.y;
-    tile_t player = state.player.tile;
+    int32_t player_x = map_x + game.map->scale*game.player.box.x;
+    int32_t player_y = map_y + game.map->scale*game.player.box.y;
+    tile_t player = game.player.tile;
 
-    tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, state.map->scale);
+    tileset_queue_tile(backbuf, game.tilesets[TILESET_ID(player)], TILE_ID(player), player_x, player_y, game.map->scale);
 
     /* Draw invincibility timer */
-    int64_t inv_total = TIMEDIFF(state.player.inv_start, state.player.inv_end);
-    int64_t inv_rest = MIN(TIMEDIFF(current, state.player.inv_end), inv_total);
+    int64_t inv_total = TIMEDIFF(game.player.inv_start, game.player.inv_end);
+    int64_t inv_rest = MIN(TIMEDIFF(current, game.player.inv_end), inv_total);
     if (inv_rest > 0) {
         image_queue_fill(backbuf, (struct rect){0, 0,
                 inv_rest*backbuf.width/inv_total, 4*scale.interface}, INV_COLOR);
@@ -243,32 +245,32 @@ bool redraw(struct timespec current, bool force) {
     drain_work();
 
     /* Draw damage indicators */
-    int64_t dmg_diff = TIMEDIFF(state.player.last_damage, current);
+    int64_t dmg_diff = TIMEDIFF(game.player.last_damage, current);
     if (dmg_diff < DMG_ANI_DUR) {
         // Damge indicators are blue for absorbed damage
         // and red for effective
-        tile_t dmg = (state.player.inv_at_damge_start ? TILE_PLAYER_INV_DAMAGE : TILE_PLAYER_DAMAGE) + (4*dmg_diff/(SEC/3));
-        tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(dmg)], TILE_ID(dmg), player_x, player_y, state.map->scale);
+        tile_t dmg = (game.player.inv_at_damge_start ? TILE_PLAYER_INV_DAMAGE : TILE_PLAYER_DAMAGE) + (4*dmg_diff/(SEC/3));
+        tileset_queue_tile(backbuf, game.tilesets[TILESET_ID(dmg)], TILE_ID(dmg), player_x, player_y, game.map->scale);
     }
 
     /* Draw lives */
-    for (int i = 0; i < (state.player.lives + 1)/2; i++) {
-        int32_t px = 20 + ((state.player.lives + 1)/2 - i)*TILE_WIDTH*scale.interface/2;
+    for (int i = 0; i < (game.player.lives + 1)/2; i++) {
+        int32_t px = 20 + ((game.player.lives + 1)/2 - i)*TILE_WIDTH*scale.interface/2;
         int32_t py = 24 - 8*(i & 1) ;
         tile_t lives_tile;
-        if ((state.player.lives & 1) & !i) {
+        if ((game.player.lives & 1) & !i) {
             px -= scale.interface;
             lives_tile = inv_rest > 0 ? TILE_SIPOISON_STATIC : TILE_SPOISON_STATIC;
         } else {
             lives_tile = inv_rest > 0 ? TILE_IPOISON_STATIC : TILE_POISON_STATIC;
         }
-        tileset_queue_tile(backbuf, state.tilesets[TILESET_ID(lives_tile)],
+        tileset_queue_tile(backbuf, game.tilesets[TILESET_ID(lives_tile)],
                            TILE_ID(lives_tile), px, py, scale.interface);
         drain_work();
     }
 
     /* Draw message screen if required by state */
-    struct tilemap *screen_to_draw = state.screens[state.state];
+    struct tilemap *screen_to_draw = game.screens[game.state];
     if (screen_to_draw) {
         int32_t sx = backbuf.width/2 - screen_to_draw->width*screen_to_draw->tile_width*screen_to_draw->scale/2;
         int32_t sy = backbuf.height/2 - screen_to_draw->height*screen_to_draw->tile_height*screen_to_draw->scale/2;
@@ -282,19 +284,20 @@ bool redraw(struct timespec current, bool force) {
 inline static void next_level(void) {
     char buf[20];
     struct stat st;
-
-    snprintf(buf, sizeof buf, "data/map_%d.txt", ++state.level);
-    if (stat(buf, &st) == 0) {
-        state.keys = (struct input_state) {0};
-        state.state = s_normal;
-        state.camera_y = state.camera_x = 50*scale.map;
-        load_map_from_file(buf);
-    } else state.state = s_win;;
+    if (++game.level < MAX_LEVEL) {
+        game.keys = (struct input_state) {0};
+        game.state = s_normal;
+        game.camera_y = game.camera_x = 50*scale.map;
+        snprintf(buf, sizeof buf, "data/map_%d.txt", game.level);
+        load_map(buf, stat(buf, &st) != 0);
+    } else {
+        game.state = s_win;
+    }
 }
 
 inline static char get_tiletype(int x, int y) {
-    uint32_t type = TILE_TYPE_CHAR(tilemap_get_tiletype(state.map, x, y, 1));
-    return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(state.map, x, y, 0)) : type;
+    uint32_t type = TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 1));
+    return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 0)) : type;
 }
 
 inline static struct box get_bounding_box_for(char cell, int32_t x, int32_t y) {
@@ -335,66 +338,66 @@ inline static struct box get_bounding_box_for(char cell, int32_t x, int32_t y) {
 }
 
 static void move_camera(int64_t tick_delta) {
-    int32_t old_cx = state.camera_x;
-    int32_t old_cy = state.camera_y;
+    int32_t old_cx = game.camera_x;
+    int32_t old_cy = game.camera_y;
 
-    double x_speed_scale = MIN(backbuf.width/5, 512)/MAX(state.map->scale, 2);
-    double y_speed_scale = MIN(backbuf.height/4, 512)/MAX(state.map->scale, 2);
+    double x_speed_scale = MIN(backbuf.width/5, 512)/MAX(game.map->scale, 2);
+    double y_speed_scale = MIN(backbuf.height/4, 512)/MAX(game.map->scale, 2);
 
-    double cam_dx = -pow((state.camera_x + (state.player.box.x + state.player.box.width/2)*state.map->scale)/x_speed_scale, 3) * tick_delta * CAM_SPEED;
-    double cam_dy = -pow((state.camera_y + (state.player.box.y + state.player.box.height/2)*state.map->scale)/y_speed_scale, 3) * tick_delta * CAM_SPEED;
+    double cam_dx = -pow((game.camera_x + (game.player.box.x + game.player.box.width/2)*game.map->scale)/x_speed_scale, 3) * tick_delta * CAM_SPEED;
+    double cam_dy = -pow((game.camera_y + (game.player.box.y + game.player.box.height/2)*game.map->scale)/y_speed_scale, 3) * tick_delta * CAM_SPEED;
 
     // Remove annoing slow moving camera
-    if (fabs(cam_dx) < 0.34*tick_delta/state.avg_delta) cam_dx = 0;
-    if (fabs(cam_dy) < 0.34*tick_delta/state.avg_delta) cam_dy = 0;
+    if (fabs(cam_dx) < 0.34*tick_delta/game.avg_delta) cam_dx = 0;
+    if (fabs(cam_dy) < 0.34*tick_delta/game.avg_delta) cam_dy = 0;
 
-    state.camera_x += MAX(-scale.dpi, MIN(cam_dx, scale.dpi));
-    state.camera_y += MAX(-scale.dpi, MIN(cam_dy, scale.dpi));
+    game.camera_x += MAX(-scale.dpi, MIN(cam_dx, scale.dpi));
+    game.camera_y += MAX(-scale.dpi, MIN(cam_dy, scale.dpi));
 
-    state.want_redraw |= old_cx != (int32_t)state.camera_x || old_cy != (int32_t)state.camera_y;
+    game.want_redraw |= old_cx != (int32_t)game.camera_x || old_cy != (int32_t)game.camera_y;
 }
 
 static void select_player_tile(double dx, double dy) {
-    tile_t frame = ANIMATION_FRAME(state.player.tile);
-    tile_t variant = PLAYER_VARIANT(state.player.tile);
-    tile_t old = state.player.tile;
+    tile_t frame = ANIMATION_FRAME(game.player.tile);
+    tile_t variant = PLAYER_VARIANT(game.player.tile);
+    tile_t old = game.player.tile;
     if (dx > 0.01) {
-        state.player.tile = TILE_PLAYER_MOVING_LEFT_(variant) + frame;
+        game.player.tile = TILE_PLAYER_MOVING_LEFT_(variant) + frame;
     } else if (dx < -0.01) {
-        state.player.tile = TILE_PLAYER_MOVING_RIGHT_(variant) + frame;
+        game.player.tile = TILE_PLAYER_MOVING_RIGHT_(variant) + frame;
     } else if (fabs(dy) > 0.01) {
-        state.player.tile = (PLAYER_DIRECTION(state.player.tile) ?
+        game.player.tile = (PLAYER_DIRECTION(game.player.tile) ?
             TILE_PLAYER_MOVING_RIGHT_(variant) : TILE_PLAYER_MOVING_LEFT_(variant)) + frame;
     } else {
-        state.player.tile = (PLAYER_DIRECTION(state.player.tile) ?
+        game.player.tile = (PLAYER_DIRECTION(game.player.tile) ?
             TILE_PLAYER_RIGHT_(variant) : TILE_PLAYER_LEFT_(variant)) + frame;
     }
 
-    state.want_redraw |= old != state.player.tile;
+    game.want_redraw |= old != game.player.tile;
 }
 
 static bool move_player(int64_t tick_delta, struct timespec current) {
-    double old_px = state.player.box.x;
-    double old_py = state.player.box.y;
-    double speed = tick_delta*PLAYER_SPEED*(state.keys.right - state.keys.left +
-            state.keys.backward - state.keys.forward == 2 ? sqrt(2) : 2);
-    double dx = speed * (state.keys.right - state.keys.left);
-    double dy = speed * (state.keys.backward - state.keys.forward);
+    double old_px = game.player.box.x;
+    double old_py = game.player.box.y;
+    double speed = tick_delta*PLAYER_SPEED*(game.keys.right - game.keys.left +
+            game.keys.backward - game.keys.forward == 2 ? sqrt(2) : 2);
+    double dx = speed * (game.keys.right - game.keys.left);
+    double dy = speed * (game.keys.backward - game.keys.forward);
 
     bool map_changed = 0;
 
-    state.player.box.x += dx;
-    state.player.box.y += dy;
+    game.player.box.x += dx;
+    game.player.box.y += dy;
 
     // Handle collisions and interactions
 
-    int32_t px = state.player.box.x/state.map->tile_width;
-    int32_t py = state.player.box.y/state.map->tile_height;
+    int32_t px = game.player.box.x/game.map->tile_width;
+    int32_t py = game.player.box.y/game.map->tile_height;
     for (int32_t y = py; y <= py + 1; y++) {
         for (int32_t x = px; x <= px + 1; x++) {
             char cell = get_tiletype(x, y);
             struct box b = get_bounding_box_for(cell, x, y);
-            struct box p = state.player.box;
+            struct box p = game.player.box;
             /* Signed depths for x and y axes.
              * They are equal to the distance player
              * should be moved to not intersect with
@@ -404,64 +407,64 @@ static bool move_player(int64_t tick_delta, struct timespec current) {
             double hx = ((p.x < b.x ? MAX(0, p.x + p.width - b.x) : MIN(0, p.x - b.x - b.width)));
             switch (cell) {
             case WALL:
-                if (fabs(hx) < fabs(hy)) state.player.box.x -= hx;
-                else state.player.box.y -= hy;
+                if (fabs(hx) < fabs(hy)) game.player.box.x -= hx;
+                else game.player.box.y -= hy;
                 break;
             case POISON:
             case IPOISON:
             case SPOISON:
             case SIPOISON:
                 if (fmin(fabs(hx), fabs(hy)) > 0) {
-                    if (cell == POISON) state.player.lives += 2;
-                    else if (cell == SPOISON) state.player.lives++;
+                    if (cell == POISON) game.player.lives += 2;
+                    else if (cell == SPOISON) game.player.lives++;
                     else {
                         int64_t inc = (1 + (cell == IPOISON))*INV_DUR;
-                        state.player.inv_start = current;
-                        if (TIMEDIFF(state.player.inv_end, current) > 0)
-                            state.player.inv_end = current;
-                        TIMEINC(state.player.inv_end, inc);
+                        game.player.inv_start = current;
+                        if (TIMEDIFF(game.player.inv_end, current) > 0)
+                            game.player.inv_end = current;
+                        TIMEINC(game.player.inv_end, inc);
                     }
-                    tilemap_set_tile(state.map, x, y, 1, NOTILE);
+                    tilemap_set_tile(game.map, x, y, 1, NOTILE);
                     map_changed = 1;
-                    state.want_redraw = 1;
+                    game.want_redraw = 1;
                 }
                 break;
             case VOID:
                 if (fmin(fabs(hx), fabs(hy)) > 0) {
-                    state.state = s_game_over;
+                    game.state = s_game_over;
                 }
                 break;
             case ACTIVETRAP:
                 if (fmin(fabs(hx), fabs(hy)) > 0) {
-                    bool damaged_recently = TIMEDIFF(state.player.last_damage, current) < DMG_DUR;
+                    bool damaged_recently = TIMEDIFF(game.player.last_damage, current) < DMG_DUR;
                     if (!damaged_recently) {
-                        bool invincible = TIMEDIFF(state.player.inv_end, current) < 0;
-                        state.player.inv_at_damge_start = invincible;
+                        bool invincible = TIMEDIFF(game.player.inv_end, current) < 0;
+                        game.player.inv_at_damge_start = invincible;
                         if (!invincible) {
-                            state.player.lives -= 2;
-                            if (state.player.lives <= 0)
-                                state.state = s_game_over;
+                            game.player.lives -= 2;
+                            if (game.player.lives <= 0)
+                                game.state = s_game_over;
                         }
-                        state.player.last_damage = current;
-                        state.want_redraw = 1;
+                        game.player.last_damage = current;
+                        game.want_redraw = 1;
                     }
                 }
                 break;
             case EXIT:
                 if (fmin(fabs(hx), fabs(hy)) > 0) {
                     next_level();
-                    state.want_redraw = 1;
+                    game.want_redraw = 1;
                 }
                 break;
             }
         }
     }
 
-    state.want_redraw |= (int32_t)state.player.box.x != (int32_t)old_px ||
-            (int32_t)state.player.box.y != (int32_t)old_py;
+    game.want_redraw |= (int32_t)game.player.box.x != (int32_t)old_px ||
+            (int32_t)game.player.box.y != (int32_t)old_py;
 
     // Select right tile depending on player movements
-    select_player_tile(state.player.box.x - old_px, state.player.box.y - old_py);
+    select_player_tile(game.player.box.x - old_px, game.player.box.y - old_py);
 
     return map_changed;
 }
@@ -469,76 +472,76 @@ static bool move_player(int64_t tick_delta, struct timespec current) {
 int64_t tick(struct timespec current) {
     bool map_changed = 0;
 
-    int64_t random_time = SEC/TPS - TIMEDIFF(state.last_random, current);
+    int64_t random_time = SEC/TPS - TIMEDIFF(game.last_random, current);
     if (random_time <= 10000LL) {
-        map_changed |= tilemap_random_tick(state.map);
-        state.last_random = current;
+        map_changed |= tilemap_random_tick(game.map);
+        game.last_random = current;
         random_time = SEC/UPS;
     }
 
-    int64_t update_time = SEC/UPS - TIMEDIFF(state.last_update, current);
+    int64_t update_time = SEC/UPS - TIMEDIFF(game.last_update, current);
     if (update_time <= 10000LL) {
-        map_changed |= tilemap_animation_tick(state.map);
-        if (state.screens[state.state]) {
-            if (tilemap_animation_tick(state.screens[state.state]))
-                tilemap_refresh(state.screens[state.state]);
+        map_changed |= tilemap_animation_tick(game.map);
+        if (game.screens[game.state]) {
+            if (tilemap_animation_tick(game.screens[game.state]))
+                tilemap_refresh(game.screens[game.state]);
         }
-        struct tile *tile = &state.tilesets[TILESET_ID(state.player.tile)]->tiles[TILE_ID(state.player.tile)];
-        state.player.tile = MKTILE(TILESET_ID(state.player.tile), tile->next_frame);
-        state.last_update = current;
+        struct tile *tile = &game.tilesets[TILESET_ID(game.player.tile)]->tiles[TILE_ID(game.player.tile)];
+        game.player.tile = MKTILE(TILESET_ID(game.player.tile), tile->next_frame);
+        game.last_update = current;
         update_time = SEC/TPS;
     }
 
-    int64_t tick_delta = TIMEDIFF(state.last_tick, current);
+    int64_t tick_delta = TIMEDIFF(game.last_tick, current);
     int64_t tick_time = SEC/FPS - tick_delta;
-    if (tick_time <= 10000LL || state.tick_early) {
+    if (tick_time <= 10000LL || game.tick_early) {
         move_camera(tick_delta);
 
-        if (state.state == s_normal)
+        if (game.state == s_normal)
             map_changed |= move_player(tick_delta, current);
 
-        state.want_redraw |= TIMEDIFF(state.player.inv_end, current) < 0 ||
-                TIMEDIFF(state.player.last_damage, current) < DMG_ANI_DUR;
+        game.want_redraw |= TIMEDIFF(game.player.inv_end, current) < 0 ||
+                TIMEDIFF(game.player.last_damage, current) < DMG_ANI_DUR;
 
-        state.last_tick = current;
-        state.tick_early = 0;
+        game.last_tick = current;
+        game.tick_early = 0;
         tick_time = SEC/FPS;
     }
 
     if (map_changed) {
-        tilemap_refresh(state.map);
-        state.want_redraw = 1;
+        tilemap_refresh(game.map);
+        game.want_redraw = 1;
     }
     return MAX(0, MIN(MIN(update_time, random_time), tick_time));
 }
 
 static void reset_game(void) {
-    state.level = 0;
-    state.player.lives = 1;
-    state.player.inv_end = state.player.inv_start = (struct timespec){0};
+    game.level = 0;
+    game.player.lives = 1;
+    game.player.inv_end = game.player.inv_start = (struct timespec){0};
     next_level();
 
     // Select random player model
     int r = rand();
-    state.player.tile = TILE_PLAYER_LEFT_(r);
+    game.player.tile = TILE_PLAYER_LEFT_(r);
 }
 
 inline static void change_scale(double inc) {
     double old_scale = scale.map;
     scale.map = MAX(1., MIN(scale.map + inc, 20));
-    state.camera_x = state.camera_x*scale.map/old_scale;
-    state.camera_y = state.camera_y*scale.map/old_scale;
-    tilemap_set_scale(state.map, scale.map);
-    state.want_redraw = 1;
+    game.camera_x = game.camera_x*scale.map/old_scale;
+    game.camera_y = game.camera_y*scale.map/old_scale;
+    tilemap_set_scale(game.map, scale.map);
+    game.want_redraw = 1;
 }
 
 /* This function is called on every key press */
 void handle_key(uint8_t kc, uint32_t st, bool pressed) {
     uint32_t ksym = get_keysym(kc, st);
 
-    if (ksym < 0xFF && state.state == s_greet) {
-        state.want_redraw = 1;
-        state.state = s_normal;
+    if (ksym < 0xFF && game.state == s_greet) {
+        game.want_redraw = 1;
+        game.state = s_normal;
     }
 
     //warn("Key %x (%c) %s", ksym, ksym, pressed ? "down" : "up");
@@ -548,23 +551,23 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
         break;
     case k_w:
     case k_Up:
-        state.tick_early = !state.keys.forward;
-        state.keys.forward = pressed;
+        game.tick_early = !game.keys.forward;
+        game.keys.forward = pressed;
         break;
     case k_s:
     case k_Down:
-        state.tick_early = !state.keys.backward;
-        state.keys.backward = pressed;
+        game.tick_early = !game.keys.backward;
+        game.keys.backward = pressed;
         break;
     case k_a:
     case k_Left:
-        state.tick_early = !state.keys.left;
-        state.keys.left = pressed;
+        game.tick_early = !game.keys.left;
+        game.keys.left = pressed;
         break;
     case k_d:
     case k_Right:
-        state.tick_early = !state.keys.right;
-        state.keys.right = pressed;
+        game.tick_early = !game.keys.right;
+        game.keys.right = pressed;
         break;
     case k_minus:
         if (pressed) change_scale(-1);
@@ -689,75 +692,85 @@ static tile_t decode_decoration(const char *m, ssize_t w, ssize_t h, int x, int 
     return NOTILE;
 }
 
-static void load_map_from_file(const char *file) {
-    int fd = open(file, O_RDONLY);
-    if (fd < 0) {
-        warn("Can't open tile map '%s': %s", file, strerror(errno));
-        return;
-    }
-
-    struct stat statbuf;
-    if (fstat(fd, &statbuf) < 0) {
-        warn("Can't stat tile map '%s': %s", file, strerror(errno));
-        close(fd);
-        return;
-    }
-
-    // +1 to make file contents NULL-terminated
-    char *addr = mmap(NULL, statbuf.st_size + 1, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
-    close(fd);
-
-    if (addr == MAP_FAILED) {
-        warn("Can't mmap tile map '%s': %s", file, strerror(errno));
-        return;
-    }
-
+static void load_map(const char *file, bool generated) {
+    char *addr = NULL;
     size_t width = 0, height = 0;
-    char *nel = addr;
-    do {
-        char *newnel = strchr(nel, '\n');
-        if (newnel) {
-            height++;
-            if (width) {
-                if ((ssize_t)width != newnel - nel)
-                    goto format_error;
-            } else {
-                width = newnel - nel;
-            }
-            newnel++;
+    struct stat statbuf = {0};
+
+    if (!generated) {
+        int fd = open(file, O_RDONLY);
+        if (fd < 0) {
+            warn("Can't open tile map '%s': %s", file, strerror(errno));
+            return;
         }
-        nel = newnel;
-    } while (nel);
+
+        if (fstat(fd, &statbuf) < 0) {
+            warn("Can't stat tile map '%s': %s", file, strerror(errno));
+            close(fd);
+            return;
+        }
+
+        // +1 to make file contents NULL-terminated
+        addr = mmap(NULL, statbuf.st_size + 1, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0);
+        close(fd);
+
+        if (addr == MAP_FAILED) {
+            warn("Can't mmap tile map '%s': %s", file, strerror(errno));
+            return;
+        }
+
+        char *nel = addr;
+        do {
+            char *newnel = strchr(nel, '\n');
+            if (newnel) {
+                height++;
+                if (width) {
+                    if ((ssize_t)width != newnel - nel)
+                        goto format_error;
+                } else {
+                    width = newnel - nel;
+                }
+                newnel++;
+            }
+            nel = newnel;
+        } while (nel);
+    } else {
+        height = width = 32 + rand() % 64;
+        width += rand() % 32;
+        height += rand() % 32;
+        addr = generate_map(width, height);
+    }
 
     if (!height) {
 format_error:
         warn("Wrong tile tile map '%s' format", file);
-        munmap(addr, statbuf.st_size + 1);
+        if (generated) free(addr);
+        else munmap(addr, statbuf.st_size + 1);
         return;
     }
 
-    if (state.map) free_tilemap(state.map);
-    state.map = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
-    tilemap_set_scale(state.map, scale.map);
+    if (game.map) free_tilemap(game.map);
+    game.map = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, game.tilesets, NTILESETS);
+    tilemap_set_scale(game.map, scale.map);
 
     int32_t x = 0, y = 0;
     for (char *ptr = addr, c; (c = *ptr); ptr++) {
         switch(c) {
         case WALL: /* wall */;
-            tilemap_set_tile(state.map, x, y, 0, decode_wall(addr, width, height, x, y));
+            tilemap_set_tile(game.map, x, y, 0, decode_wall(addr, width, height, x, y));
             x++;
             break;
         case VOID: /* void */
-            tilemap_set_tile(state.map, x++, y, 0, TILE_VOID);
+            tilemap_set_tile(game.map, x++, y, 0, TILE_VOID);
             break;
         case PLAYER: /* player start */
-            state.player.box.x = x*TILE_WIDTH;
-            state.player.box.y = y*TILE_HEIGHT;
-            tilemap_set_tile(state.map, x, y, 0, decode_floor(addr, width, height, x, y));
+            game.player.box.x = x*TILE_WIDTH;
+            game.player.box.y = y*TILE_HEIGHT;
+            tilemap_set_tile(game.map, x, y, 0, decode_floor(addr, width, height, x, y));
             x++;
             break;
         case TRAP: /* trap */
-            tilemap_set_tile(state.map, x++, y, 0, TILE_TRAP);
+            tilemap_set_tile(game.map, x++, y, 0, TILE_TRAP);
             break;
         case POISON: /* live poison */
         case IPOISON: /* invincibility poison */
@@ -770,23 +783,23 @@ format_error:
             case SPOISON: tile = TILE_SPOISON; break;
             case SIPOISON: tile = TILE_SIPOISON; break;
             }
-            tilemap_set_tile(state.map, x, y, 0, decode_floor(addr, width, height, x, y));
-            tilemap_set_tile(state.map, x++, y, 1, tile);
+            tilemap_set_tile(game.map, x, y, 0, decode_floor(addr, width, height, x, y));
+            tilemap_set_tile(game.map, x++, y, 1, tile);
             break;
         }
         case EXIT: /* exit */
-            tilemap_set_tile(state.map, x, y, 1, TILE_EXIT);
+            tilemap_set_tile(game.map, x, y, 1, TILE_EXIT);
             // fallthrough
         case FLOOR: /* floor */
-            tilemap_set_tile(state.map, x, y, 0, decode_floor(addr, width, height, x, y));
+            tilemap_set_tile(game.map, x, y, 0, decode_floor(addr, width, height, x, y));
             x++;
             break;
         case '\n': /* new line */
             x = 0, y++;
             break;
         default:
-            free_tilemap(state.map);
-            state.map = NULL;
+            free_tilemap(game.map);
+            game.map = NULL;
             goto format_error;
         }
     }
@@ -794,16 +807,17 @@ format_error:
     for (x = 0; x < (int)width; x++) {
         for (y = 0; y < (int)height; y++) {
             // Decorate map
-            tilemap_set_tile(state.map, x, y, 2, decode_decoration(addr, width, height, x, y));
+            tilemap_set_tile(game.map, x, y, 2, decode_decoration(addr, width, height, x, y));
         }
     }
 
-    munmap(addr, statbuf.st_size + 1);
-    tilemap_refresh(state.map);
+    if (generated) free(addr);
+    else munmap(addr, statbuf.st_size + 1);
+    tilemap_refresh(game.map);
 }
 
 static struct tilemap *create_screen(size_t width, size_t height) {
-    struct tilemap *map  = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, state.tilesets, NTILESETS);
+    struct tilemap *map  = create_tilemap(width, height, TILE_WIDTH, TILE_HEIGHT, game.tilesets, NTILESETS);
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             tile_t tile = NOTILE;
@@ -928,12 +942,12 @@ static void do_load(void *varg) {
             .next_frame = 0,
         };
     }
-    state.tilesets[arg->i] = create_tileset(arg->path, tiles, tile_id);
+    game.tilesets[arg->i] = create_tileset(arg->path, tiles, tile_id);
 
 }
 
 inline static void set_tile_type(tile_t tileid, uint32_t type) {
-    struct tileset *ts = state.tilesets[TILESET_ID(tileid)];;
+    struct tileset *ts = game.tilesets[TILESET_ID(tileid)];;
     assert(TILE_ID(tileid) < ts->ntiles);
     ts->tiles[TILE_ID(tileid)].type |= type;
 }
@@ -1013,25 +1027,25 @@ static void init_tiles(void) {
 }
 
 void init(void) {
-    state.state = s_greet;
-    state.player.box.width = TILE_WIDTH;
-    state.player.box.height = TILE_HEIGHT;
-    state.avg_delta = SEC/FPS;
-    clock_gettime(CLOCK_TYPE, &state.last_frame);
-    srand(state.last_frame.tv_nsec);
-    TIMEINC(state.last_frame, -(int64_t)state.avg_delta);
+    game.state = s_greet;
+    game.player.box.width = TILE_WIDTH;
+    game.player.box.height = TILE_HEIGHT;
+    game.avg_delta = SEC/FPS;
+    clock_gettime(CLOCK_TYPE, &game.last_frame);
+    srand(game.last_frame.tv_nsec);
+    TIMEINC(game.last_frame, -(int64_t)game.avg_delta);
 
     init_tiles();
     reset_game();
-    state.screens[s_greet] = create_greet_screen();
-    state.screens[s_game_over] = create_death_screen();
-    state.screens[s_win] = create_win_screen();
+    game.screens[s_greet] = create_greet_screen();
+    game.screens[s_game_over] = create_death_screen();
+    game.screens[s_win] = create_win_screen();
 }
 
 void cleanup(void) {
-    free_tilemap(state.map);
+    free_tilemap(game.map);
     for (size_t i = 0; i < s_MAX; i++)
-        if (state.screens[i]) free_tilemap(state.screens[i]);
+        if (game.screens[i]) free_tilemap(game.screens[i]);
     for (size_t i = 0; i < NTILESETS; i++)
-        unref_tileset(state.tilesets[i]);
+        unref_tileset(game.tilesets[i]);
 }

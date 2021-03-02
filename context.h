@@ -39,6 +39,9 @@ bool redraw(struct timespec current, bool force);
 int64_t tick(struct timespec current);
 void handle_key(uint8_t kc, uint32_t state, bool pressed);
 
+/* Map generator.c */
+char *generate_map(int32_t width, int32_t height);
+
 /* Helpers from window.c */
 uint32_t get_keysym(uint8_t kc, uint32_t state);
 

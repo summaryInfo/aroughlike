@@ -416,8 +416,8 @@ void image_queue_blt(struct image dst, struct rect drect, struct image src, stru
 
     if (fastpath) {
         /* Fast path for aligned non-resizing blits */
-        if (drect.x < 0) drect.width -= drect.x, srect.x -= drect.x, drect.x = 0;
-        if (drect.y < 0) drect.height -= drect.y, srect.y -= drect.y, drect.y = 0;
+        if (drect.x < 0) drect.width += drect.x, srect.x -= drect.x, drect.x = 0;
+        if (drect.y < 0) drect.height += drect.y, srect.y -= drect.y, drect.y = 0;
         drect.height = MIN(drect.height, src.height - srect.y);
         drect.width = MIN(drect.width, src.width - srect.x);
         if (LIKELY(drect.width > 0 && drect.height > 0)) {

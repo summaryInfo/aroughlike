@@ -13,7 +13,7 @@ CFLAGS += -Wswitch-bool -Wpacked -Wshadow -Wformat-security
 CFLAGS += -Wswitch-unreachable -Wlogical-op
 CFLAGS += -Wnested-externs -Wstrict-prototypes
 
-OBJ := window.o image.o game.o tilemap.o worker.o
+OBJ := window.o image.o game.o tilemap.o worker.o generator.o
 
 LIBS != pkg-config xcb xcb-shm --libs
 INCLUES != pkg-config xcb xcb-shm --cflags
@@ -38,6 +38,7 @@ $(NAME): $(OBJ)
 window.o: image.h util.h context.h worker.h keys.h
 image.o: image.h util.h stb_image.h worker.h
 game.o: context.h util.h keys.h tilemap.h worker.h
+generator.o: util.h
 tilemap.o: image.h tilemap.h util.h
 
 .PHONY: all clean force run
