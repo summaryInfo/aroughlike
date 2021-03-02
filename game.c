@@ -339,8 +339,9 @@ static void move_camera(int64_t tick_delta) {
     double cam_dx = -pow((state.camera_x + (state.player.box.x + state.player.box.width/2)*state.map->scale)/x_speed_scale, 3) * tick_delta * CAM_SPEED;
     double cam_dy = -pow((state.camera_y + (state.player.box.y + state.player.box.height/2)*state.map->scale)/y_speed_scale, 3) * tick_delta * CAM_SPEED;
 
-    if (fabs(cam_dx) < 0.3) cam_dx = 0;
-    if (fabs(cam_dy) < 0.3) cam_dy = 0;
+    // Remove annoing slow moving camera
+    if (fabs(cam_dx) < 0.34*tick_delta/state.avg_delta) cam_dx = 0;
+    if (fabs(cam_dy) < 0.34*tick_delta/state.avg_delta) cam_dy = 0;
 
     state.camera_x += MAX(-scale.dpi, MIN(cam_dx, scale.dpi));
     state.camera_y += MAX(-scale.dpi, MIN(cam_dy, scale.dpi));
