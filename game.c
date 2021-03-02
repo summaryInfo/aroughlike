@@ -84,6 +84,7 @@
 #define TILE_WALL                    MKTILE(TILESET_STATIC,   10 * 6 + 9)
 #define TILE_WALL_BOTTOM_LEFT_EX(x)  MKTILE(TILESET_STATIC,   10 * 5 + 3 + 2 * ((x) & 1))
 #define TILE_WALL_BOTTOM_RIGHT_EX(x) MKTILE(TILESET_STATIC,   10 * 5 + 4 * ((x) & 1))
+#define TILE_WALL_LEFT_RIGHT         MKTILE(TILESET_STATIC,   10 * 10)
 
 #define TILE_PLAYER_LEFT_(x)         MKTILE(TILESET_ENTITIES,  4 * ((x) % 7) + 0)
 #define TILE_PLAYER_RIGHT_(x)        MKTILE(TILESET_ENTITIES,  4 * (16 + (x) % 7) + 0)
@@ -581,15 +582,19 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
 inline static char get_cell(const char *map, ssize_t width, ssize_t height, ssize_t x, ssize_t y) {
     if (x < 0 || x >= width) return VOID;
     if (y < 0 || y >= height) return VOID;
-    return map[(width + 1)*y + x];
+    char cell = map[(width + 1)*y + x];
+    return cell == WALL || cell == VOID ? cell : FLOOR;
 }
 
 static tile_t decode_wall(const char *m, ssize_t w, ssize_t h, int x, int y) {
     char bottom = get_cell(m, w, h, x, y + 1);
     char right = get_cell(m, w, h, x + 1, y);
     char left = get_cell(m, w, h, x - 1, y);
+    char top = get_cell(m, w, h, x, y - 1);
     char bottom_right = get_cell(m, w, h, x + 1, y + 1);
     char bottom_left = get_cell(m, w, h, x - 1, y + 1);
+    char top_right = get_cell(m, w, h, x + 1, y - 1);
+    char top_left = get_cell(m, w, h, x - 1, y - 1);
 
     // Unfortunately tileset I use does not
     // contain all combinations of walls...
@@ -597,25 +602,38 @@ static tile_t decode_wall(const char *m, ssize_t w, ssize_t h, int x, int y) {
 
     int r = rand();
 
-    if (left == WALL && bottom == WALL && bottom_left == VOID)
-        return TILE_WALL_BOTTOM_LEFT_EX(r);
-    if (right == WALL && bottom == WALL && bottom_right == VOID)
-        return TILE_WALL_BOTTOM_RIGHT_EX(r);
+    if (bottom == FLOOR) return TILE_WALL_TOP_(r);
+    if (bottom_left == FLOOR && bottom_right == FLOOR) return TILE_WALL_LEFT_RIGHT;
 
-    if (bottom != WALL && bottom != VOID) return TILE_WALL_TOP_(r);
-    if (left != WALL && left != VOID) return TILE_WALL_LEFT_(r);
-    if (right != WALL && right != VOID) return TILE_WALL_RIGHT_(r);
+    if (left == FLOOR && right != FLOOR) {
+        if (top == FLOOR) return TILE_WALL_BOTTOM_RIGHT_EX(r);
+        return TILE_WALL_LEFT_(r);
+    } else if (right == FLOOR && left != FLOOR) {
+        if (top == FLOOR) return TILE_WALL_BOTTOM_LEFT_EX(r);
+        return TILE_WALL_RIGHT_(r);
+    } else if (left == FLOOR && right == FLOOR) {
+        return TILE_WALL_LEFT_RIGHT;
+    }
 
-    if (bottom == VOID) {
-        if (left == VOID && right == WALL) return TILE_WALL_BOTTOM_LEFT;
-        else if (left == WALL && right == VOID) return TILE_WALL_BOTTOM_RIGHT;
+    if (top == FLOOR) {
+        if (bottom_left == FLOOR) return TILE_WALL_BOTTOM_RIGHT_EX(r);
+        if (bottom_right == FLOOR) return TILE_WALL_BOTTOM_LEFT_EX(r);
         return TILE_WALL_BOTTOM_(r);
     }
 
-    if (left == WALL && right == VOID) return TILE_WALL_LEFT_(r);
-    if (left == VOID && right == WALL) return TILE_WALL_RIGHT_(r);
+    unsigned code = (top_left == FLOOR) | (top_right == FLOOR) << 1 |
+        (bottom_left == FLOOR) << 2 | (bottom_right == FLOOR) << 3;
+    switch (code) {
+    case 1: return TILE_WALL_BOTTOM_RIGHT;
+    case 2: return TILE_WALL_BOTTOM_LEFT;
+    case 3: return TILE_WALL_BOTTOM_(r);
+    case 4: case 5: return TILE_WALL_LEFT_(r);
+    case 8: case 10: return TILE_WALL_RIGHT_(r);
+    case 7: case 13: return TILE_WALL_BOTTOM_LEFT_EX(r);
+    case 6: case 9: case 11: case 14:return TILE_WALL_BOTTOM_RIGHT_EX(r);
+    }
 
-    return TILE_WALL;
+    return TILE_WALL_LEFT_RIGHT;
 }
 
 static tile_t decode_floor(const char *m, ssize_t w, ssize_t h, int x, int y) {
@@ -646,15 +664,15 @@ static tile_t decode_decoration(const char *m, ssize_t w, ssize_t h, int x, int 
     char cur = get_cell(m, w, h, x, y);
     int r = rand();
 
-    if (bottom != WALL && bottom != VOID && cur == WALL) {
+    if (bottom == FLOOR && cur == WALL) {
         if (r % 10 == 3) return TILE_FLAG_TOP;
         else if (r % 10 == 5) return TILE_TORCH_TOP;
     }
-    if (left == WALL && cur != WALL && cur != VOID) {
+    if (left == WALL && cur == FLOOR) {
         if (r % 10 == 0) return TILE_TORCH_LEFT;
     }
 
-    if (cur == FLOOR) {
+    if (cur == FLOOR && m[(w + 1)*y + x] == FLOOR) {
         if (r % 20 == 3) {
             switch((r/20) % 17) {
             case 0:
@@ -871,7 +889,7 @@ static struct tilemap *create_greet_screen(void) {
 static void do_load(void *varg) {
     struct tileset_desc *arg = varg;
 
-    struct tile *tiles = calloc(arg->x*arg->y, sizeof(*tiles));
+    struct tile *tiles = calloc(arg->x*arg->y + (arg->i == TILESET_STATIC), sizeof(*tiles));
     tile_t tile_id = 0;
     for (size_t y = 0; y < arg->y; y++) {
         for (size_t x = 0; x < arg->x; x++) {
@@ -894,6 +912,21 @@ static void do_load(void *varg) {
             };
             tile_id++;
         }
+    }
+    if (arg->i == TILESET_STATIC) {
+        // Special case left-right wall (width x=3.5, y=5)
+        tiles[tile_id++] = (struct tile) {
+            .pos = (struct rect){
+                3*TILE_WIDTH + TILE_WIDTH/2,
+                5*TILE_HEIGHT,
+                TILE_WIDTH,
+                TILE_HEIGHT
+            },
+            .origin_x = 0,
+            .origin_y = 0,
+            .type = 0,
+            .next_frame = 0,
+        };
     }
     state.tilesets[arg->i] = create_tileset(arg->path, tiles, tile_id);
 
@@ -980,18 +1013,19 @@ static void init_tiles(void) {
 }
 
 void init(void) {
-    init_tiles();
-    reset_game();
-
-    state.screens[s_greet] = create_greet_screen();
-    state.screens[s_game_over] = create_death_screen();
-    state.screens[s_win] = create_win_screen();
     state.state = s_greet;
     state.player.box.width = TILE_WIDTH;
     state.player.box.height = TILE_HEIGHT;
     state.avg_delta = SEC/FPS;
     clock_gettime(CLOCK_TYPE, &state.last_frame);
+    srand(state.last_frame.tv_nsec);
     TIMEINC(state.last_frame, -(int64_t)state.avg_delta);
+
+    init_tiles();
+    reset_game();
+    state.screens[s_greet] = create_greet_screen();
+    state.screens[s_game_over] = create_death_screen();
+    state.screens[s_win] = create_win_screen();
 }
 
 void cleanup(void) {
