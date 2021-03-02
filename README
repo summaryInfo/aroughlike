@@ -32,6 +32,19 @@ If there's a file named data/map_N.txt
 then it is loaded as a map.
 Otherwise map is generated procedurally.
 
+## Optional features
+
+* Camera (5)
+* Smooth level transitions (3)
+* Status indicators (2)
+* Idle/walking animations (2-5)
+* Animated objects (2)
+* Damage indicators/effects (2)
+* Health and invincibility poisons
+* Procedural map generation
+* Multi-threaded/SIMD renderer
+* 7 random characters
+
 ## Building and running 
 
 This program can be run with
@@ -46,4 +59,4 @@ To compile a program you just need to
 ## Thanks
 
 Thanks to stb image libraries authors.
-Tileset used was downloaded [here](https://pixel-poem.itch.io/dungeon-assetpuck)
+Tileset used was downloaded [here](https://pixel-poem.itch.io/dungeon-assetpuck) (and modified to suite the game needs)
