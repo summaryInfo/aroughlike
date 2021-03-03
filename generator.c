@@ -186,13 +186,113 @@ static void draw_random_line(struct genstate *state, struct rect room, char c, i
     }
 }
 
-static void decorate_room(struct genstate *state, struct rect room, bool spawn) {
-    if (room.width < 0) room.width = -room.width;
-    int32_t center_x = room.x + room.width/2;
-    int32_t center_y = room.y + room.height/2;
+static void generate_walls(struct genstate *state, struct rect room) {
+    if (room.width < 7 || room.height < 7) return;
+
+    int r1 = rand(), r3 = rand();
 
     /*
-     * Poisons (4 types)
+     * Walls
+     *    Vertical wall
+     *    Vertical top half wall
+     *    Vertical bottom half wall
+     *    Horizontal wall
+     *    Horizontal top half wall
+     *    Horizontal bottom half wall
+     */
+
+
+    bool full = 0;
+    switch (r1 % 4) {
+    case 0: /* Vertical wall */ {
+        int32_t rx = room.x + 1 + (r3 % (room.width - 2));
+        draw_vertical_line(state, room.y, room.y + room.height - 1, rx, '#');
+        r3 /= room.width - 2;
+        c_set(state, rx, room.y + r3 % room.height, '.');
+        r3 /= room.height;
+        c_set(state, rx, room.y + r3 % room.height, '.');
+        r3 /= room.height;
+        if (c_get(state, rx, room.y - 1) == '.') c_set(state, rx, room.y, '.');
+        if (c_get(state, rx, room.y + room.height) == '.') c_set(state, rx, room.y + room.height - 1, '.');
+        full = 1;
+        break;
+     }
+    case 1: /* Vertical top half */ {
+        int32_t rx = room.x + 1 + (r3 % (room.width - 2));
+        r3 /= room.width - 2;
+        int32_t ry = room.y + 1 + (r3 % ((room.height - 1)/ 2));
+        r3 /= room.height - 1;
+        draw_vertical_line(state, room.y, ry, rx, '#');
+        if (c_get(state, rx, room.y - 1) == '.') c_set(state, rx, room.y, '.');
+        break;
+    }
+    case 2: /* Vertical bottom half */ {
+        int32_t rx = room.x + 1 + (r3 % (room.width - 2));
+        r3 /= room.width - 2;
+        int32_t ry = room.y + room.height - 1 - (r3 % ((room.height - 1)/ 2));
+        r3 /= room.height - 1;
+        draw_vertical_line(state, room.y + room.height - 1, ry, rx, '#');
+        if (c_get(state, rx, room.y + room.height) == '.') c_set(state, rx, room.y + room.height - 1, '.');
+        break;
+    }
+    case 3:
+        // NONE
+        break;
+    }
+    r1 /= 4;
+
+    int mod = r1 % 4;
+    if (full && (mod == 1 || mod == 2)) mod = 0;
+    switch (mod) {
+    case 0: /* Horizontal wall */ {
+        int32_t ry = room.y + 1 + (r3 % (room.height - 2));
+        draw_horizontal_line(state, room.x, room.x + room.width - 1, ry, '#');
+        r3 /= room.height - 2;
+        c_set(state, room.x + r3 % room.width, ry, '.');
+        r3 /= room.width;
+        c_set(state, room.x + r3 % room.width, ry, '.');
+        r3 /= room.width;
+        if (c_get(state, room.x - 1, ry) == '.') c_set(state, room.x, ry, '.');
+        if (c_get(state, room.x + room.width, ry) == '.') c_set(state, room.x + room.width - 1, ry, '.');
+        break;
+     }
+    case 1: /* Horizontal left half */ {
+        int32_t ry = room.y + 1 + (r3 % (room.height - 2));
+        r3 /= room.height - 2;
+        int32_t rx = room.x + 1 + (r3 % ((room.width - 2)/ 2));
+        r3 /= (room.width - 1)/ 2;
+        draw_horizontal_line(state, room.x, rx, ry, '#');
+        if (c_get(state, room.x - 1, ry) == '.') c_set(state, room.x, ry, '.');
+        break;
+    }
+    case 2: /* Horizontal right half */ {
+        int32_t ry = room.y + 1 + (r3 % (room.height - 2));
+        r3 /= room.height - 2;
+        int32_t rx = room.x + room.width - 1 - (r3 % ((room.width - 2)/ 2));
+        r3 /= (room.width - 1)/ 2;
+        draw_horizontal_line(state, room.x + room.width - 1, rx, ry, '#');
+        if (c_get(state, room.x + room.width, ry) == '.') c_set(state, room.x + room.width - 1, ry, '.');
+        break;
+    }
+    case 3:
+        // NONE
+        break;
+    }
+    r1 /= 4;
+}
+
+enum poison_pos {
+    pp_none,
+    pp_center,
+    pp_corner,
+};
+
+static enum poison_pos generate_poisons(struct genstate *state, struct rect room) {
+    int32_t center_x = room.x + room.width/2;
+    int32_t center_y = room.y + room.height/2;
+    int r1 = rand();
+
+    /* Poisons (4 types)
      *     Type
      *         1 big healing
      *         5 small healing
@@ -210,7 +310,88 @@ static void decorate_room(struct genstate *state, struct rect room, bool spawn) 
      *         3 2
      *         2 3
      *         1 4
-     * Traps
+     */
+
+    char poison_char = 0;
+    int poison_count = 0;
+    enum poison_pos position = pp_none;
+
+    switch (r1 % 11) {
+    case 0: poison_char = 'P'; break;
+    case 1: case 2: poison_char = 'I'; break;
+    case 3: case 4: case 5: poison_char = 'i'; break;
+    default: poison_char = 'p'; break;
+    }
+    r1 /= 11;
+    switch (r1 % 24) {
+    case 0: poison_count = 5; break;
+    case 1: case 2: poison_count = 4; break;
+    case 3: case 4: case 5: case 6: poison_count = 3; break;
+    case 7: case 8: case 9: case 10: case 11: case 12: poison_count = 2; break;
+    default: poison_count = 1; break;
+    }
+    r1 /= 24;
+
+    poison_count = MIN(poison_count, MIN(room.width & ~1, room.height & ~1));
+    int32_t phigh = (poison_count + 1)/2;
+    int32_t plow = poison_count/2;
+    switch (r1 % 10) {
+    case 8: /* Sides */
+        position = pp_corner;
+        draw_horizontal_line(state, center_x - phigh, center_x + plow, room.y, poison_char);
+        draw_horizontal_line(state, center_x - phigh,  center_x + plow, room.y + room.height - 1, poison_char);
+        /* fallthrough */
+    case 1: /* Left-Right */
+        draw_vertical_line(state, center_y - phigh,  center_y + plow, room.x + room.width - 1, poison_char);
+        /* fallthrough */
+    case 0: /* Left */
+        position = pp_corner;
+        draw_vertical_line(state, center_y - phigh,  center_y + plow, room.x, poison_char);
+        break;
+    case 2: /* Top */
+        position = pp_corner;
+        draw_horizontal_line(state, center_x - phigh,  center_x + plow, room.y, poison_char);
+        break;
+    case 3: /* Top-Bottom */
+        draw_horizontal_line(state, center_x - phigh,  center_x + plow, room.y, poison_char);
+        /* fallthrough */
+    case 5: /* Bottom */
+        position = pp_corner;
+        draw_horizontal_line(state, center_x - phigh,  center_x + plow, room.y + room.height - 1, poison_char);
+        break;
+    case 4: /* Right */
+        position = pp_corner;
+        draw_vertical_line(state, center_y - phigh,  center_y + plow, room.x + room.width - 1, poison_char);
+        break;
+    case 6: /* Corners */
+        position = pp_corner;
+        poison_count = MAX(poison_count - 1, 1);
+        draw_horizontal_line(state, room.x, room.x + phigh, room.y, poison_char);
+        draw_horizontal_line(state, room.x + room.width - 1, room.x + room.width - 1 - phigh, room.y, poison_char);
+        draw_vertical_line(state, room.y, room.y + phigh, room.x, poison_char);
+        draw_vertical_line(state, room.y + room.height - 1, room.y + room.height - 1 - phigh, room.x, poison_char);
+        break;
+    case 7: /* Center */
+        position = pp_center;
+        draw_rect(state, (struct rect){center_x - phigh, center_y - phigh, poison_count, poison_count}, poison_char);
+        break;
+    case 9: /* Checkerboard in center */
+        position = pp_center;
+        poison_count = MIN(poison_count + 1, MIN(room.width & ~1, room.height & ~1));
+        phigh = (poison_count + 1)/2;
+        draw_checkerboard(state, (struct rect){center_x - phigh, center_y - phigh, poison_count, poison_count}, poison_char);
+        break;
+    }
+    r1 /= 10;
+    return position;
+}
+
+static void generate_traps(struct genstate *state, struct rect room, enum poison_pos pp) {
+    int32_t center_x = room.x + room.width/2;
+    int32_t center_y = room.y + room.height/2;
+    int r1 = rand(), r2 = rand();
+
+    /* Traps
      *     X-cross
      *     +-cross
      *     Chess pattern
@@ -218,150 +399,69 @@ static void decorate_room(struct genstate *state, struct rect room, bool spawn) 
      *     Frame
      *     Center
      *     Random line (1-3)
-     *
-     * Walls
-     *    Vertical wall
-     *    Vertical half wall
-     *    Horizontal wall
-     *    Horizontal half
      */
-     int r1 = rand(), r2 = rand();
-     bool has_walls = r1 % 2 == 0; r1 /= 2;
-     bool has_poisons = r1 % 3 == 0 || spawn; r1 /= 3;
-     bool has_traps = r1 % 3 != 0 && !spawn; r1 /= 3;
-     bool poisons_at_center = 0;
-     bool poisons_at_corners = 0;
 
-     char poison_char = 0;
-     if (has_poisons) switch (r1 % 11) {
-         case 0: poison_char = 'P'; break;
-         case 1: case 2: poison_char = 'I'; break;
-         case 3: case 4: case 5: poison_char = 'i'; break;
-         default: poison_char = 'p'; break;
-     }
-     r1 /= 11;
-     int poison_count = 0;
-     if (has_poisons) switch (r1 % 24) {
-         case 0: poison_count = 5; break;
-         case 1: case 2: poison_count = 4; break;
-         case 3: case 4: case 5: case 6: poison_count = 3; break;
-         case 7: case 8: case 9: case 10: case 11: case 12: poison_count = 2; break;
-         default: poison_count = 1; break;
-     }
-     r1 /= 24;
-
-     poison_count = MIN(poison_count, MIN(room.width & ~1, room.height & ~1));
-     int32_t phigh = (poison_count + 1)/2;
-     int32_t plow = poison_count/2;
-     if (has_poisons) switch (r1 % 10) {
-     case 8: /* Sides */
-         poisons_at_corners = 1;
-         draw_horizontal_line(state, center_x - phigh, center_x + plow, room.y, poison_char);
-         draw_horizontal_line(state, center_x - phigh,  center_x + plow, room.y + room.height - 1, poison_char);
-         /* fallthrough */
-     case 1: /* Left-Right */
-         draw_vertical_line(state, center_y - phigh,  center_y + plow, room.x, poison_char);
-         /* fallthrough */
-     case 0: /* Left */
-         poisons_at_corners = 1;
-         draw_vertical_line(state, center_y - phigh,  center_y + plow, room.x, poison_char);
-         break;
-     case 2: /* Top */
-         poisons_at_corners = 1;
-         draw_horizontal_line(state, center_x - phigh,  center_x + plow, room.y, poison_char);
-         break;
-     case 3: /* Top-Bottom */
-         draw_horizontal_line(state, center_x - phigh,  center_x + plow, room.y, poison_char);
-         /* fallthrough */
-     case 5: /* Bottom */
-         poisons_at_corners = 1;
-         draw_horizontal_line(state, center_x - phigh,  center_x + plow, room.y + room.height - 1, poison_char);
-         break;
-     case 4: /* Right */
-         poisons_at_corners = 1;
-         draw_vertical_line(state, center_y - phigh,  center_y + plow, room.x + room.width - 1, poison_char);
-         break;
-     case 6: /* Corners */
-         poisons_at_corners = 1;
-         poison_count = MAX(poison_count - 1, 1);
-         // TODO <---
-         break;
-     case 7: /* Center */
-         poisons_at_center = 1;
-         draw_rect(state, (struct rect){center_x - phigh, center_y - phigh, poison_count, poison_count}, poison_char);
-         break;
-     case 9: /* Checkerboard in center */
-         poisons_at_center = 1;
-         poison_count = MIN(poison_count + 1, MIN(room.width, room.height));
-         draw_checkerboard(state, (struct rect){center_x - phigh, center_y - phigh, poison_count, poison_count}, poison_char);
-         break;
-     }
-     r1 /= 10;
-
-
-     if (has_traps) switch (r1 % 10) {
-     case 0: /* X-cross */
-         // TODO poisons_at_center/poisons_at_corners
-         draw_line(state, room.x, room.y, room.x + room.width - 1, room.y + room.height - 1, 'T');
-         draw_line(state, room.x + room.width - 1, room.y, room.x, room.y + room.height - 1, 'T');
-         break;
-     case 1: /* +-cross */
-         if (poisons_at_center) {
-             draw_vertical_line(state, room.y, room.y + room.height - 1, center_x - 1, 'T');
-             draw_vertical_line(state, room.y, room.y + room.height - 1, center_x + 1, 'T');
-             draw_horizontal_line(state, room.x, room.x + room.width - 1, center_y - 1, 'T');
-             draw_horizontal_line(state, room.x, room.x + room.width - 1, center_y + 1, 'T');
-         } else {
-             draw_vertical_line(state, room.y, room.y + room.height - 1, center_x, 'T');
-             draw_horizontal_line(state, room.x, room.x + room.width - 1, center_y, 'T');
-         }
-         break;
-     case 2: /* Chess pattern */
-         draw_checkerboard(state, room, 'T');
-         break;
-     case 3: /* Half chess pattern (left) */ {
-         struct rect half = pad_rect(room, poisons_at_corners);
-         switch(r2 % 4) {
-         case 1: half.x += half.width / 2; /* fallthrough */
-         case 0: half.width /= 2; break;
-         case 2: half.y += half.height / 2; /* fallthrough */
-         case 3: half.height /= 2; break;
-         }
-         draw_checkerboard(state, half, 'T');
-         break;
-     }
-     case 5: /* Center */
-         if (!poisons_at_center) {
-             int32_t pad = poisons_at_corners + (r2 % MIN(room.width - 1, room.height - 1))/2;
-             struct rect half = pad_rect(room, pad);
-             draw_rect(state, half, 'T');
-             break;
-         }
-         // fallthrough
-     case 4: /* Frame */ {
-         struct rect half = pad_rect(room, poisons_at_corners);
-         draw_horizontal_line(state, half.x, half.x + half.width - 1, half.y, 'T');
-         draw_horizontal_line(state, half.x, half.x + half.width - 1, half.y + half.height - 1, 'T');
-         draw_vertical_line(state, half.y, half.y + half.height - 1, half.x, 'T');
-         draw_vertical_line(state, half.y, half.y + half.height - 1, half.x + half.width - 1, 'T');
-         break;
-     }
-     case 9: /* 4 random lines */
-         draw_random_line(state, room, 'T', &r2);
-         // fallthrough
-     case 8: /* 3 random lines */
-         draw_random_line(state, room, 'T', &r2);
-         // fallthrough
-     case 7: /* 2 random lines */
-         draw_random_line(state, room, 'T', &r2);
-         // fallthrough
-     case 6: /* 1 random line */
-         draw_random_line(state, room, 'T', &r2);
-         break;
-     }
-     r1 /= 10;
-
-     // TODO walls
+    switch (r1 % 10) {
+    case 0: /* X-cross */
+        // TODO poisons_at_center/poisons_at_corners
+        draw_line(state, room.x, room.y, room.x + room.width - 1, room.y + room.height - 1, 'T');
+        draw_line(state, room.x + room.width - 1, room.y, room.x, room.y + room.height - 1, 'T');
+        break;
+    case 1: /* +-cross */
+        if (pp == pp_center) {
+            draw_vertical_line(state, room.y, room.y + room.height - 1, center_x - 1, 'T');
+            draw_vertical_line(state, room.y, room.y + room.height - 1, center_x + 1, 'T');
+            draw_horizontal_line(state, room.x, room.x + room.width - 1, center_y - 1, 'T');
+            draw_horizontal_line(state, room.x, room.x + room.width - 1, center_y + 1, 'T');
+        } else {
+            draw_vertical_line(state, room.y, room.y + room.height - 1, center_x, 'T');
+            draw_horizontal_line(state, room.x, room.x + room.width - 1, center_y, 'T');
+        }
+        break;
+    case 2: /* Chess pattern */
+        draw_checkerboard(state, room, 'T');
+        break;
+    case 3: /* Half chess pattern (left) */ {
+        struct rect half = pad_rect(room, pp == pp_corner);
+        switch(r2 % 4) {
+        case 1: half.x += half.width / 2; /* fallthrough */
+        case 0: half.width /= 2; break;
+        case 2: half.y += half.height / 2; /* fallthrough */
+        case 3: half.height /= 2; break;
+        }
+        draw_checkerboard(state, half, 'T');
+        break;
+    }
+    case 5: /* Center */
+        if (pp != pp_center) {
+            int32_t pad = (pp == pp_corner) + (r2 % MIN(room.width - 1, room.height - 1))/2;
+            struct rect half = pad_rect(room, pad);
+            draw_rect(state, half, 'T');
+            break;
+        }
+        // fallthrough
+    case 4: /* Frame */ {
+        struct rect half = pad_rect(room, pp == pp_corner);
+        draw_horizontal_line(state, half.x, half.x + half.width - 1, half.y, 'T');
+        draw_horizontal_line(state, half.x, half.x + half.width - 1, half.y + half.height - 1, 'T');
+        draw_vertical_line(state, half.y, half.y + half.height - 1, half.x, 'T');
+        draw_vertical_line(state, half.y, half.y + half.height - 1, half.x + half.width - 1, 'T');
+        break;
+    }
+    case 9: /* 4 random lines */
+        draw_random_line(state, room, 'T', &r2);
+        // fallthrough
+    case 8: /* 3 random lines */
+        draw_random_line(state, room, 'T', &r2);
+        // fallthrough
+    case 7: /* 2 random lines */
+        draw_random_line(state, room, 'T', &r2);
+        // fallthrough
+    case 6: /* 1 random line */
+        draw_random_line(state, room, 'T', &r2);
+        break;
+    }
+    r1 /= 10;
 }
 
 char *generate_map(int32_t width, int32_t height) {
@@ -437,8 +537,23 @@ finish_tunnels:
     }
 
     // Decorate rooms
-    for (ssize_t i = 0; i < state.rooms.size; i++)
-        decorate_room(&state, state.rooms.data[i], state.rooms.data + i == first);
+    for (ssize_t i = 0; i < state.rooms.size; i++) {
+        int r1 = rand();
+
+        bool spawn = state.rooms.data + i == first;
+        bool has_walls = r1 % 2 == 0; r1 /= 2;
+        bool has_poisons = r1 % 3 == 0 || spawn; r1 /= 3;
+        bool has_traps = r1 % 3 != 0 && !spawn; r1 /= 3;
+        enum poison_pos pp = pp_none;
+
+        // room width is set no negative value by tunnel making algorithm
+        // as an indication that room is already connected, so fix it
+        state.rooms.data[i].width = abs(state.rooms.data[i].width);
+
+        if (has_poisons) pp = generate_poisons(&state, state.rooms.data[i]);
+        if (has_traps) generate_traps(&state, state.rooms. data[i], pp);
+        if (has_walls) generate_walls(&state, state.rooms.data[i]);
+    }
 
 
     // Spawn point and exit

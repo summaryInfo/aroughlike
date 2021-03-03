@@ -296,8 +296,7 @@ inline static void next_level(void) {
         game.state = s_normal;
         game.camera_y = game.camera_x = 50*scale.map;
         snprintf(buf, sizeof buf, "data/map_%d.txt", game.level);
-        //load_map(buf, stat(buf, &st) != 0);
-        load_map(buf, 1);
+        load_map(buf, stat(buf, &st) != 0);
     } else {
         game.state = s_win;
     }
