@@ -348,8 +348,8 @@ static void move_camera(int64_t tick_delta) {
     int32_t old_cx = game.camera_x;
     int32_t old_cy = game.camera_y;
 
-    double x_speed_scale = MIN(backbuf.width/5, 512)/MAX(game.map->scale, 2);
-    double y_speed_scale = MIN(backbuf.height/4, 512)/MAX(game.map->scale, 2);
+    double x_speed_scale = backbuf.width/4/(1+scale.map);
+    double y_speed_scale = backbuf.height/4/(1+scale.map);
 
     double cam_dx = -pow((game.camera_x + (game.player.box.x + game.player.box.width/2)*game.map->scale)/x_speed_scale, 3) * tick_delta * CAM_SPEED;
     double cam_dy = -pow((game.camera_y + (game.player.box.y + game.player.box.height/2)*game.map->scale)/y_speed_scale, 3) * tick_delta * CAM_SPEED;
