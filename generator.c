@@ -256,9 +256,9 @@ static void generate_walls(struct genstate *state, struct rect room) {
         draw_horizontal_line(state, room.x, room.x + room.width - 1, ry, '#');
         r3 /= room.height - 2;
         if (full) {
-            int32_t x = room.x + r3 % (full_x - room.x - 1);
+            int32_t x = room.x + r3 % (full_x - room.x);
             c_set(state, x, ry, '.');
-            r3 /= (full_x - room.x - 1);
+            r3 /= (full_x - room.x);
             x = full_x + r3 % (room.width - (full_x - room.x));
             c_set(state, x, ry, '.');
             r3 /= (room.width - (full_x - room.x));
