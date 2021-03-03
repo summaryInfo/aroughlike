@@ -203,24 +203,27 @@ static void generate_walls(struct genstate *state, struct rect room) {
 
 
     bool full = 0;
+    int32_t full_x = 0;
+    int32_t full_y1 = 0, full_y2 = 0;
     switch (r1 % 4) {
     case 0: /* Vertical wall */ {
         int32_t rx = room.x + 1 + (r3 % (room.width - 2));
         draw_vertical_line(state, room.y, room.y + room.height - 1, rx, '#');
         r3 /= room.width - 2;
-        c_set(state, rx, room.y + r3 % room.height, '.');
+        c_set(state, rx, full_y1 = (room.y + r3 % room.height), '.');
         r3 /= room.height;
-        c_set(state, rx, room.y + r3 % room.height, '.');
+        c_set(state, rx, full_y2 = (room.y + r3 % room.height), '.');
         r3 /= room.height;
         if (c_get(state, rx, room.y - 1) == '.') c_set(state, rx, room.y, '.');
         if (c_get(state, rx, room.y + room.height) == '.') c_set(state, rx, room.y + room.height - 1, '.');
         full = 1;
+        full_x = rx;
         break;
      }
     case 1: /* Vertical top half */ {
         int32_t rx = room.x + 1 + (r3 % (room.width - 2));
         r3 /= room.width - 2;
-        int32_t ry = room.y + 1 + (r3 % ((room.height - 1)/ 2));
+        int32_t ry = room.y + 1 + (r3 % ((room.height - 3)/ 2));
         r3 /= room.height - 1;
         draw_vertical_line(state, room.y, ry, rx, '#');
         if (c_get(state, rx, room.y - 1) == '.') c_set(state, rx, room.y, '.');
@@ -229,7 +232,7 @@ static void generate_walls(struct genstate *state, struct rect room) {
     case 2: /* Vertical bottom half */ {
         int32_t rx = room.x + 1 + (r3 % (room.width - 2));
         r3 /= room.width - 2;
-        int32_t ry = room.y + room.height - 1 - (r3 % ((room.height - 1)/ 2));
+        int32_t ry = room.y + room.height - 1 - (r3 % ((room.height - 3)/ 2));
         r3 /= room.height - 1;
         draw_vertical_line(state, room.y + room.height - 1, ry, rx, '#');
         if (c_get(state, rx, room.y + room.height) == '.') c_set(state, rx, room.y + room.height - 1, '.');
@@ -246,29 +249,45 @@ static void generate_walls(struct genstate *state, struct rect room) {
     switch (mod) {
     case 0: /* Horizontal wall */ {
         int32_t ry = room.y + 1 + (r3 % (room.height - 2));
+        if (ry == full_y1 || ry == full_y2) {
+            if (ry == room.y + 1) ry++;
+            else ry--;
+        }
         draw_horizontal_line(state, room.x, room.x + room.width - 1, ry, '#');
         r3 /= room.height - 2;
-        c_set(state, room.x + r3 % room.width, ry, '.');
-        r3 /= room.width;
-        c_set(state, room.x + r3 % room.width, ry, '.');
-        r3 /= room.width;
+        if (full) {
+            int32_t x = room.x + r3 % (full_x - room.x - 1);
+            c_set(state, x, ry, '.');
+            r3 /= (full_x - room.x - 1);
+            x = full_x + r3 % (room.width - (full_x - room.x));
+            c_set(state, x, ry, '.');
+            r3 /= (room.width - (full_x - room.x));
+
+        } else {
+            int32_t x = full_x + r3 % room.width;
+            c_set(state, x, ry, '.');
+            r3 /= room.width;
+            x = room.x + r3 % room.width;
+            c_set(state, x, ry, '.');
+            r3 /= room.width;
+        }
         if (c_get(state, room.x - 1, ry) == '.') c_set(state, room.x, ry, '.');
         if (c_get(state, room.x + room.width, ry) == '.') c_set(state, room.x + room.width - 1, ry, '.');
         break;
      }
     case 1: /* Horizontal left half */ {
-        int32_t ry = room.y + 1 + (r3 % (room.height - 2));
+        int32_t ry = room.y + 1 + (r3 % (room.height - 3));
         r3 /= room.height - 2;
-        int32_t rx = room.x + 1 + (r3 % ((room.width - 2)/ 2));
+        int32_t rx = room.x + (r3 % ((room.width - 3)/ 2));
         r3 /= (room.width - 1)/ 2;
         draw_horizontal_line(state, room.x, rx, ry, '#');
         if (c_get(state, room.x - 1, ry) == '.') c_set(state, room.x, ry, '.');
         break;
     }
     case 2: /* Horizontal right half */ {
-        int32_t ry = room.y + 1 + (r3 % (room.height - 2));
+        int32_t ry = room.y + 1 + (r3 % (room.height - 3));
         r3 /= room.height - 2;
-        int32_t rx = room.x + room.width - 1 - (r3 % ((room.width - 2)/ 2));
+        int32_t rx = room.x + room.width - 1 - (r3 % ((room.width - 3)/ 2));
         r3 /= (room.width - 1)/ 2;
         draw_horizontal_line(state, room.x + room.width - 1, rx, ry, '#');
         if (c_get(state, room.x + room.width, ry) == '.') c_set(state, room.x + room.width - 1, ry, '.');
@@ -323,14 +342,15 @@ static enum poison_pos generate_poisons(struct genstate *state, struct rect room
     default: poison_char = 'p'; break;
     }
     r1 /= 11;
-    switch (r1 % 24) {
+    switch (r1 % 32) {
     case 0: poison_count = 5; break;
     case 1: case 2: poison_count = 4; break;
-    case 3: case 4: case 5: case 6: poison_count = 3; break;
-    case 7: case 8: case 9: case 10: case 11: case 12: poison_count = 2; break;
+    case 3: case 4: case 5: case 6: case 15: poison_count = 3; break;
+    case 7: case 8: case 9: case 10: case 16:
+    case 11: case 12: case 13: case 14: poison_count = 2; break;
     default: poison_count = 1; break;
     }
-    r1 /= 24;
+    r1 /= 32;
 
     poison_count = MIN(poison_count, MIN(room.width & ~1, room.height & ~1));
     int32_t phigh = (poison_count + 1)/2;

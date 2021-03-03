@@ -110,7 +110,7 @@
 #define FLOOR '.'
 
 #define INV_COLOR 0xFF62ABD4
-#define INV_DUR (3*SEC)
+#define INV_DUR (2*SEC)
 #define DMG_DUR (SEC)
 #define DMG_ANI_DUR (SEC/3)
 
@@ -448,6 +448,8 @@ static void move_player(int64_t tick_delta, struct timespec current) {
                             game.player.lives -= 2;
                             if (game.player.lives <= 0)
                                 game.state = s_game_over;
+                        } else {
+                            TIMEINC(game.player.inv_end, -SEC);
                         }
                         game.player.last_damage = current;
                         game.want_redraw = 1;
@@ -741,9 +743,9 @@ static void load_map(const char *file, bool generated) {
             nel = newnel;
         } while (nel);
     } else {
-        height = width = 32 + rand() % 32;
-        width += rand() % 64;
-        height += rand() % 64;
+        height = width = 32 + rand() % 64;
+        width += rand() % 80;
+        height += rand() % 80;
         addr = generate_map(width, height);
     }
 
@@ -972,7 +974,7 @@ static void init_tiles(void) {
     } types[] = {
         { TILE_VOID, VOID },
         { TILE_EXIT, EXIT },
-        { TILE_TRAP, TRAP | TILE_TYPE_RANDOM | (42 << 16) | (50 << 24) },
+        { TILE_TRAP, TRAP | TILE_TYPE_RANDOM | (42 << 16) | (20 << 24) },
         { TILE_TRAP_0, ACTIVETRAP },
         { TILE_TRAP_1, ACTIVETRAP },
         { TILE_TRAP_2, ACTIVETRAP },
