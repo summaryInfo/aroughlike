@@ -14,6 +14,7 @@ inline static bool get_dirty(struct tilemap *map, size_t x, size_t y) {
 
 inline static void mark_dirty(struct tilemap *map, size_t x, size_t y) {
     map->dirty[y*((map->width + 31) >> 5) + (x >> 5)] |= 1U << (x & 31);
+    map->has_dirty |= 1;
 }
 
 
@@ -89,6 +90,18 @@ void tileset_queue_tile(struct image dst, struct tileset *set, tile_t tile, int3
         tl->pos.height
     };
     image_queue_blt(dst, drect, set->img, srect, 0);
+}
+
+tile_t tileset_next_tile(struct tileset *set, tile_t tileid, bool random) {
+    struct tile *tile = &set->tiles[TILE_ID(tileid)];
+    if (random) {
+        if (!(tile->type & TILE_TYPE_RANDOM) ||
+            (rand() % TILE_TYPE_DIV(tile->type)) != 1) return tileid;
+    } else {
+        if ((tile->type & (TILE_TYPE_ANIMATED |
+                TILE_TYPE_RANDOM)) != TILE_TYPE_ANIMATED) return tileid;
+    }
+    return MKTILE(TILESET_ID(tileid), tile->next_frame);
 }
 
 struct tilemap *create_tilemap(size_t width, size_t height, int32_t tile_width, int32_t tile_height, struct tileset **sets, size_t nsets) {
@@ -169,7 +182,8 @@ void tilemap_set_scale(struct tilemap *map, double scale) {
     map->scale = scale;
 }
 
-void tilemap_refresh(struct tilemap *map) {
+bool tilemap_refresh(struct tilemap *map) {
+    if (!map->has_dirty) return 0;
     for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
         for (size_t yi = 0; yi < map->height; yi++) {
             for (size_t xi = 0; xi < map->width; xi++) {
@@ -183,8 +197,10 @@ void tilemap_refresh(struct tilemap *map) {
         }
         drain_work();
     }
+    map->has_dirty = 0;
     size_t dirty_size = ((map->width + 31) >> 5)*map->height*sizeof(uint32_t);
     memset(map->dirty, 0, dirty_size);
+    return 1;
 }
 
 uint32_t tilemap_get_tiletype(struct tilemap *map, int32_t x, int32_t y, int32_t layer) {
@@ -195,35 +211,26 @@ uint32_t tilemap_get_tiletype(struct tilemap *map, int32_t x, int32_t y, int32_t
     return tile->type;
 }
 
-bool tilemap_animation_tick(struct tilemap *map) {
-    bool any = 0;
+void tilemap_animation_tick(struct tilemap *map) {
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
             for (size_t zi = 0; zi < TILEMAP_LAYERS; zi++) {
                 tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, zi);
                 if (tileid == NOTILE) continue;
-                struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
-                if ((tile->type & (TILE_TYPE_ANIMATED | TILE_TYPE_RANDOM)) == TILE_TYPE_ANIMATED && tileid != tile->next_frame) {
-                    tilemap_set_tile_unsafe(map, xi, yi, zi, MKTILE(TILESET_ID(tileid), tile->next_frame));
-                    any = 1;
-                }
+                tile_t next = tileset_next_tile(map->sets[TILESET_ID(tileid)], tileid, 0);
+                if (next != tileid) tilemap_set_tile_unsafe(map, xi, yi, zi, next);
             }
         }
     }
-    return any;
 }
 
-bool tilemap_random_tick(struct tilemap *map) {
-    bool any = 0;
+void tilemap_random_tick(struct tilemap *map) {
     for (size_t yi = 0; yi < map->height; yi++) {
         for (size_t xi = 0; xi < map->width; xi++) {
             tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, 0);
             if (tileid == NOTILE) continue;
-            struct tile *tile = &map->sets[TILESET_ID(tileid)]->tiles[TILE_ID(tileid)];
-            if (!(tile->type & TILE_TYPE_RANDOM) || (rand() % TILE_TYPE_DIV(tile->type)) != 1) continue;
-            tilemap_set_tile_unsafe(map, xi, yi, 0, MKTILE(TILESET_ID(tileid), tile->next_frame));
-            any = 1;
+            tile_t next = tileset_next_tile(map->sets[TILESET_ID(tileid)], tileid, 1);
+            if (next != tileid) tilemap_set_tile_unsafe(map, xi, yi, 0, next);
         }
     }
-    return any;
 }

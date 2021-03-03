@@ -47,6 +47,7 @@ struct tilemap {
     int32_t tile_width;
     int32_t tile_height;
     uint32_t *dirty;
+    bool has_dirty;
     double scale;
     tile_t tiles[];
 };
@@ -56,6 +57,7 @@ struct tileset *create_tileset(const char *path, struct tile *tiles, size_t ntil
 void unref_tileset(struct tileset *);
 void ref_tileset(struct tileset *);
 void tileset_queue_tile(struct image dst, struct tileset *set, tile_t tile, int32_t x, int32_t y, double scale);
+tile_t tileset_next_tile(struct tileset *set, tile_t tileid, bool random);
 
 struct tilemap *create_tilemap(size_t width, size_t height, int32_t tile_width, int32_t tile_height, struct tileset **sets, size_t nsets) ;
 void free_tilemap(struct tilemap *map);
@@ -65,8 +67,8 @@ tile_t tilemap_set_tile(struct tilemap *map, int32_t x, int32_t y, int32_t layer
 void tilemap_set_scale(struct tilemap *map, double scale);
 tile_t tilemap_get_tile(struct tilemap *map, int32_t x, int32_t y, int32_t layer);
 uint32_t tilemap_get_tiletype(struct tilemap *map, int32_t x, int32_t y, int32_t layer);
-bool tilemap_animation_tick(struct tilemap *map);
-bool tilemap_random_tick(struct tilemap *map);
-void tilemap_refresh(struct tilemap *map);
+void tilemap_animation_tick(struct tilemap *map);
+void tilemap_random_tick(struct tilemap *map);
+bool tilemap_refresh(struct tilemap *map);
 
 #endif

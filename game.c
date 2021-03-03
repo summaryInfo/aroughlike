@@ -129,6 +129,13 @@ struct box {
     double height;
 };
 
+enum timers {
+    random_tick_timer,
+    animation_timer,
+    tick_timer,
+    timer_MAX
+};
+
 struct gamestate {
     struct tilemap *map;
     struct tileset *tilesets[NTILESETS];
@@ -159,15 +166,15 @@ struct gamestate {
 
     int level;
 
-    struct timespec last_update;
-    struct timespec last_random;
-    struct timespec last_tick;
-    struct timespec last_frame;
+    /* Timer queue */
+    struct timespec timers[timer_MAX];
+
     bool tick_early;
     bool want_redraw;
-    bool last_redrawn;
 
     /* FPS stats */
+    bool last_redrawn;
+    struct timespec last_frame;
     double avg_delta;
 
     struct input_state {
@@ -376,15 +383,13 @@ static void select_player_tile(double dx, double dy) {
     game.want_redraw |= old != game.player.tile;
 }
 
-static bool move_player(int64_t tick_delta, struct timespec current) {
+static void move_player(int64_t tick_delta, struct timespec current) {
     double old_px = game.player.box.x;
     double old_py = game.player.box.y;
     double speed = tick_delta*PLAYER_SPEED*(game.keys.right - game.keys.left +
             game.keys.backward - game.keys.forward == 2 ? sqrt(2) : 2);
     double dx = speed * (game.keys.right - game.keys.left);
     double dy = speed * (game.keys.backward - game.keys.forward);
-
-    bool map_changed = 0;
 
     game.player.box.x += dx;
     game.player.box.y += dy;
@@ -425,7 +430,6 @@ static bool move_player(int64_t tick_delta, struct timespec current) {
                         TIMEINC(game.player.inv_end, inc);
                     }
                     tilemap_set_tile(game.map, x, y, 1, NOTILE);
-                    map_changed = 1;
                     game.want_redraw = 1;
                 }
                 break;
@@ -465,54 +469,56 @@ static bool move_player(int64_t tick_delta, struct timespec current) {
 
     // Select right tile depending on player movements
     select_player_tile(game.player.box.x - old_px, game.player.box.y - old_py);
+}
 
-    return map_changed;
+int64_t time_until_next_timer(struct timespec current) {
+    int64_t delta = INT64_MAX;
+    for (size_t i = 0; i < timer_MAX; i++) {
+        int64_t diff = TIMEDIFF(current, game.timers[i]);
+        delta = MIN(delta, diff);
+    }
+    return MAX(0, delta);
 }
 
 int64_t tick(struct timespec current) {
-    bool map_changed = 0;
-
-    int64_t random_time = SEC/TPS - TIMEDIFF(game.last_random, current);
+    int64_t random_time = TIMEDIFF(current, game.timers[random_tick_timer]);
     if (random_time <= 10000LL) {
-        map_changed |= tilemap_random_tick(game.map);
-        game.last_random = current;
-        random_time = SEC/UPS;
+        tilemap_random_tick(game.map);
+        game.timers[random_tick_timer] = current;
+        TIMEINC(game.timers[random_tick_timer], SEC/TPS);
     }
 
-    int64_t update_time = SEC/UPS - TIMEDIFF(game.last_update, current);
-    if (update_time <= 10000LL) {
-        map_changed |= tilemap_animation_tick(game.map);
+    int64_t animation_time = TIMEDIFF(current, game.timers[animation_timer]);
+    if (animation_time <= 10000LL) {
+        tilemap_animation_tick(game.map);
         if (game.screens[game.state]) {
-            if (tilemap_animation_tick(game.screens[game.state]))
-                tilemap_refresh(game.screens[game.state]);
+            tilemap_animation_tick(game.screens[game.state]);
+            game.want_redraw |= tilemap_refresh(game.screens[game.state]);
         }
-        struct tile *tile = &game.tilesets[TILESET_ID(game.player.tile)]->tiles[TILE_ID(game.player.tile)];
-        game.player.tile = MKTILE(TILESET_ID(game.player.tile), tile->next_frame);
-        game.last_update = current;
-        update_time = SEC/TPS;
+        game.player.tile = tileset_next_tile(game.tilesets[TILESET_ID(game.player.tile)], game.player.tile, 0);
+        game.timers[animation_timer] = current;
+        TIMEINC(game.timers[animation_timer], SEC/UPS);
     }
 
-    int64_t tick_delta = TIMEDIFF(game.last_tick, current);
-    int64_t tick_time = SEC/FPS - tick_delta;
+    int64_t tick_time = TIMEDIFF(current, game.timers[tick_timer]);
     if (tick_time <= 10000LL || game.tick_early) {
+        int64_t tick_delta = SEC/FPS - tick_time;
+
         move_camera(tick_delta);
 
         if (game.state == s_normal)
-            map_changed |= move_player(tick_delta, current);
+            move_player(tick_delta, current);
 
         game.want_redraw |= TIMEDIFF(game.player.inv_end, current) < 0 ||
                 TIMEDIFF(game.player.last_damage, current) < DMG_ANI_DUR;
 
-        game.last_tick = current;
         game.tick_early = 0;
-        tick_time = SEC/FPS;
+        game.timers[tick_timer] = current;
+        TIMEINC(game.timers[tick_timer], SEC/FPS);
     }
 
-    if (map_changed) {
-        tilemap_refresh(game.map);
-        game.want_redraw = 1;
-    }
-    return MAX(0, MIN(MIN(update_time, random_time), tick_time));
+    game.want_redraw |= tilemap_refresh(game.map);
+    return time_until_next_timer(current);
 }
 
 static void reset_game(void) {
