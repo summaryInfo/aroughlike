@@ -47,6 +47,7 @@ struct tilemap {
     int32_t tile_width;
     int32_t tile_height;
     uint32_t *dirty;
+    uint32_t *visited;
     uint32_t *ticked;
     bool has_dirty;
     double scale;
@@ -71,5 +72,6 @@ uint32_t tilemap_get_tiletype(struct tilemap *map, int32_t x, int32_t y, int32_t
 void tilemap_animation_tick(struct tilemap *map);
 void tilemap_random_tick(struct tilemap *map);
 bool tilemap_refresh(struct tilemap *map);
+void tilemap_visit(struct tilemap *map, int32_t x, int32_t y);
 
 #endif

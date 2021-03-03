@@ -6,10 +6,14 @@
 #include <assert.h>
 #include <string.h>
 
-#define TILE_TRAP MKTILE(1, 24*4+2)
+#define BG_COLOR 0xFF25131A
 
 inline static bool get_dirty(struct tilemap *map, size_t x, size_t y) {
     return map->dirty[y*((map->width + 31) >> 5) + (x >> 5)] & (1U << (x & 31));
+}
+
+inline static bool get_visited(struct tilemap *map, size_t x, size_t y) {
+    return map->visited[y*((map->width + 31) >> 5) + (x >> 5)] & (1U << (x & 31));
 }
 
 inline static void mark_dirty(struct tilemap *map, size_t x, size_t y) {
@@ -17,6 +21,13 @@ inline static void mark_dirty(struct tilemap *map, size_t x, size_t y) {
     map->has_dirty |= 1;
 }
 
+void tilemap_visit(struct tilemap *map, int32_t x, int32_t y) {
+    if (x < 0 || x >= (int32_t)map->width) return;
+    if (y < 0 || y >= (int32_t)map->height) return;
+    bool already =  map->visited[y*((map->width + 31) >> 5) + (x >> 5)] & (1U << (x & 31));
+    map->visited[y*((map->width + 31) >> 5) + (x >> 5)] |= 1U << (x & 31);
+    if (!already) mark_dirty(map, x, y);
+}
 
 inline static tile_t tilemap_set_tile_unsafe(struct tilemap *map, int32_t x, int32_t y, int32_t layer, tile_t tile) {
     mark_dirty(map, x, y);
@@ -107,12 +118,14 @@ struct tilemap *create_tilemap(size_t width, size_t height, int32_t tile_width, 
     assert(tile_height > 0);
 
     size_t dirty_size = ((width + 31) >> 5)*height*sizeof(uint32_t);
+    size_t ticked_size = width * height * sizeof(uint32_t);
     size_t tiles_size = (width*height*TILEMAP_LAYERS*sizeof(tile_t) + 3) & ~3;
-    struct tilemap *map = malloc(sizeof(*map) + dirty_size + tiles_size);
+    struct tilemap *map = malloc(sizeof(*map) + 2*dirty_size + tiles_size + ticked_size);
     assert(map);
 
     map->dirty = (uint32_t *)((uint8_t *)map->tiles + tiles_size);
-    map->ticked = malloc(width * height * sizeof(uint32_t));
+    map->visited = (uint32_t *)((uint8_t *)map->dirty + dirty_size);
+    map->ticked = (uint32_t *)((uint8_t *)map->visited + dirty_size);
 
     if (nsets) {
         assert(sets);
@@ -141,7 +154,6 @@ void free_tilemap(struct tilemap *map) {
         unref_tileset(map->sets[i]);
     }
     free(map->sets);
-    free(map->ticked);
     free_image(&map->cbuf);
     free(map);
 }
@@ -188,10 +200,15 @@ bool tilemap_refresh(struct tilemap *map) {
         for (size_t yi = 0; yi < map->height; yi++) {
             for (size_t xi = 0; xi < map->width; xi++) {
                 if (get_dirty(map, xi, yi)) {
-                    tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
-                    if (tile == NOTILE) continue;
-                    tileset_queue_tile(map->cbuf, map->sets[TILESET_ID(tile)],
-                                       TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
+                    if (get_visited(map, xi, yi)) {
+                        tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
+                        if (tile == NOTILE) continue;
+                        tileset_queue_tile(map->cbuf, map->sets[TILESET_ID(tile)],
+                                           TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
+                    } else if (i == 0) {
+                        image_queue_fill(map->cbuf, (struct rect) { xi*map->tile_width,
+                            yi*map->tile_height, map->tile_width, map->tile_height }, BG_COLOR);
+                    }
                 }
             }
         }

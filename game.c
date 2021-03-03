@@ -138,6 +138,7 @@ enum timers {
 
 struct gamestate {
     struct tilemap *map;
+    bool *tmp_grid;
     struct tileset *tilesets[NTILESETS];
 
     double camera_x;
@@ -288,6 +289,40 @@ bool redraw(struct timespec current, bool force) {
     return 1;
 }
 
+#define VISIBILITY_RADIUS 16
+
+inline static int32_t dist2(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+    return  (x0 - x1)*(x0 - x1) + (y0 - y1)*(y0 - y1);
+}
+
+inline static char get_tiletype(int x, int y) {
+    uint32_t type = TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 1));
+    return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 0)) : type;
+}
+
+static void discover_1(int32_t x0, int32_t y0, int32_t x1, int32_t y1, bool prevwall) {
+    tilemap_visit(game.map, x1, y1);
+    game.tmp_grid[game.map->width*y1 + x1] = 1;
+
+    if (dist2(x0, y0, x1, y1) >= VISIBILITY_RADIUS*VISIBILITY_RADIUS) return;
+
+    //int32_t dy1 = (y1 >= y0), dy0 = -(y1 <= y0);
+    //int32_t dx1 = (x1 >= x0), dx0 = -(x1 <= x0);
+    for (int32_t x = x1 - 1; x <= x1 + 1; x++) {
+        for (int32_t y = y1 - 1; y <= y1 + 1; y++) {
+            char c = get_tiletype(x, y);
+            if (c != VOID && (!prevwall || c != WALL) && !game.tmp_grid[game.map->width*y + x])
+                discover_1(x0, y0, x, y, c == WALL);
+        }
+    }
+}
+
+inline static void discover(int32_t x, int32_t y) {
+    // Lets just use BFS insead of ray casting...
+    discover_1(x, y, x, y, 0);
+    memset(game.tmp_grid, 0, game.map->width*game.map->height);
+}
+
 inline static void next_level(void) {
     char buf[20];
     struct stat st;
@@ -296,15 +331,17 @@ inline static void next_level(void) {
         game.state = s_normal;
         game.camera_y = game.camera_x = 50*scale.map;
         snprintf(buf, sizeof buf, "data/map_%d.txt", game.level);
+
         load_map(buf, stat(buf, &st) != 0);
+
+        free(game.tmp_grid);
+        game.tmp_grid = calloc(1, game.map->width*game.map->height);
+
+        discover((game.player.box.x + game.map->tile_width/2)/game.map->tile_width,
+                 (game.player.box.y + game.map->tile_height/2)/game.map->tile_height);
     } else {
         game.state = s_win;
     }
-}
-
-inline static char get_tiletype(int x, int y) {
-    uint32_t type = TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 1));
-    return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 0)) : type;
 }
 
 inline static struct box get_bounding_box_for(char cell, int32_t x, int32_t y) {
@@ -468,6 +505,13 @@ static void move_player(int64_t tick_delta, struct timespec current) {
 
     game.want_redraw |= (int32_t)game.player.box.x != (int32_t)old_px ||
             (int32_t)game.player.box.y != (int32_t)old_py;
+
+    int32_t new_player_center_x = (game.player.box.x + game.map->tile_width/2)/game.map->tile_width;
+    int32_t new_player_center_y = (game.player.box.y + game.map->tile_height/2)/game.map->tile_height;
+    int32_t old_player_center_x = (old_px + game.map->tile_width/2)/game.map->tile_width;
+    int32_t old_player_center_y = (old_py + game.map->tile_height/2)/game.map->tile_height;
+    if (new_player_center_x != old_player_center_x || new_player_center_y != old_player_center_y)
+        discover(new_player_center_x, new_player_center_y);
 
     // Select right tile depending on player movements
     select_player_tile(game.player.box.x - old_px, game.player.box.y - old_py);
@@ -744,8 +788,8 @@ static void load_map(const char *file, bool generated) {
         } while (nel);
     } else {
         height = width = 32 + rand() % 64;
-        width += rand() % 80;
-        height += rand() % 80;
+        width += rand() % 64;
+        height += rand() % 64;
         addr = generate_map(width, height);
     }
 
@@ -844,6 +888,7 @@ static struct tilemap *create_screen(size_t width, size_t height) {
                 else tile = TILE_FLOOR_(r);
             }
             tilemap_set_tile(map, x, y, 0, tile);
+            tilemap_visit(map, x, y);
         }
     }
     tilemap_set_scale(map, scale.interface/2);
@@ -1048,6 +1093,7 @@ void init(void) {
 
 void cleanup(void) {
     free_tilemap(game.map);
+    free(game.tmp_grid);
     for (size_t i = 0; i < s_MAX; i++)
         if (game.screens[i]) free_tilemap(game.screens[i]);
     for (size_t i = 0; i < NTILESETS; i++)
