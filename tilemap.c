@@ -78,9 +78,7 @@ void tileset_queue_tile(struct image dst, struct tileset *set, tile_t tile, int3
 
     struct tile *tl = &set->tiles[tile];
     struct rect drect = {
-        x + tl->origin_x*scale,
-        y + tl->origin_y*scale,
-        tl->pos.width*scale,
+        x, y, tl->pos.width*scale,
         tl->pos.height*scale
     };
     struct rect srect = {
@@ -96,7 +94,7 @@ tile_t tileset_next_tile(struct tileset *set, tile_t tileid, bool random) {
     struct tile *tile = &set->tiles[TILE_ID(tileid)];
     if (random) {
         if (!(tile->type & TILE_TYPE_RANDOM) ||
-            (rand() % TILE_TYPE_DIV(tile->type)) != 1) return tileid;
+            (rand() % TILE_TYPE_RDIV(tile->type)) != 1) return tileid;
     } else {
         if ((tile->type & (TILE_TYPE_ANIMATED |
                 TILE_TYPE_RANDOM)) != TILE_TYPE_ANIMATED) return tileid;
@@ -114,6 +112,7 @@ struct tilemap *create_tilemap(size_t width, size_t height, int32_t tile_width, 
     assert(map);
 
     map->dirty = (uint32_t *)((uint8_t *)map->tiles + tiles_size);
+    map->ticked = malloc(width * height * sizeof(uint32_t));
 
     if (nsets) {
         assert(sets);
@@ -142,6 +141,7 @@ void free_tilemap(struct tilemap *map) {
         unref_tileset(map->sets[i]);
     }
     free(map->sets);
+    free(map->ticked);
     free_image(&map->cbuf);
     free(map);
 }
@@ -229,8 +229,16 @@ void tilemap_random_tick(struct tilemap *map) {
         for (size_t xi = 0; xi < map->width; xi++) {
             tile_t tileid = tilemap_get_tile_unsafe(map, xi, yi, 0);
             if (tileid == NOTILE) continue;
+            // Handle random tick delay
+            if (map->ticked[map->width*yi + xi]) {
+                map->ticked[map->width*yi + xi]--;
+                continue;
+            }
             tile_t next = tileset_next_tile(map->sets[TILESET_ID(tileid)], tileid, 1);
-            if (next != tileid) tilemap_set_tile_unsafe(map, xi, yi, 0, next);
+            if (next != tileid) {
+                map->ticked[map->width*yi + xi] = TILE_TYPE_RREST(tilemap_get_tiletype(map, xi, yi, 0));
+                tilemap_set_tile_unsafe(map, xi, yi, 0, next);
+            }
         }
     }
 }

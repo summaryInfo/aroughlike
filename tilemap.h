@@ -17,7 +17,8 @@
 
 #define TILE_TYPE_ANIMATED 0x1000
 #define TILE_TYPE_RANDOM 0x2000
-#define TILE_TYPE_DIV(x) ((x) >> 16)
+#define TILE_TYPE_RDIV(x) (((x) >> 16) & 0xFF)
+#define TILE_TYPE_RREST(x) (((x) >> 24) & 0xFF)
 #define TILE_TYPE_CHAR(x) ((x) & 0xFF)
 
 #define VOID ' '
@@ -30,10 +31,9 @@ struct tileset {
     size_t refc;
     struct tile {
         struct rect pos;
-        int32_t origin_x;
-        int32_t origin_y;
         /* Next animation frame */
-        uint32_t next_frame;
+        tile_t next_frame;
+        uint8_t rest;
         uint32_t type;
     } *tiles;
 };
@@ -47,6 +47,7 @@ struct tilemap {
     int32_t tile_width;
     int32_t tile_height;
     uint32_t *dirty;
+    uint32_t *ticked;
     bool has_dirty;
     double scale;
     tile_t tiles[];

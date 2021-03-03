@@ -920,8 +920,6 @@ static void do_load(void *varg) {
                     TILE_WIDTH,
                     TILE_HEIGHT
                 },
-                .origin_x = 0,
-                .origin_y = 0,
                 .type = arg->animated ? TILE_TYPE_ANIMATED : 0,
                 /* In animated tileset_descs one row of tileset
                  * is one animation, and the width of tileset
@@ -942,8 +940,6 @@ static void do_load(void *varg) {
                 TILE_WIDTH,
                 TILE_HEIGHT
             },
-            .origin_x = 0,
-            .origin_y = 0,
             .type = 0,
             .next_frame = 0,
         };
@@ -976,7 +972,7 @@ static void init_tiles(void) {
     } types[] = {
         { TILE_VOID, VOID },
         { TILE_EXIT, EXIT },
-        { TILE_TRAP, TRAP | TILE_TYPE_RANDOM | (42 << 16) },
+        { TILE_TRAP, TRAP | TILE_TYPE_RANDOM | (42 << 16) | (50 << 24) },
         { TILE_TRAP_0, ACTIVETRAP },
         { TILE_TRAP_1, ACTIVETRAP },
         { TILE_TRAP_2, ACTIVETRAP },
