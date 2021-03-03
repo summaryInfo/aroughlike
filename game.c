@@ -296,7 +296,8 @@ inline static void next_level(void) {
         game.state = s_normal;
         game.camera_y = game.camera_x = 50*scale.map;
         snprintf(buf, sizeof buf, "data/map_%d.txt", game.level);
-        load_map(buf, stat(buf, &st) != 0);
+        //load_map(buf, stat(buf, &st) != 0);
+        load_map(buf, 1);
     } else {
         game.state = s_win;
     }
@@ -741,9 +742,9 @@ static void load_map(const char *file, bool generated) {
             nel = newnel;
         } while (nel);
     } else {
-        height = width = 32 + rand() % 64;
-        width += rand() % 32;
-        height += rand() % 32;
+        height = width = 32 + rand() % 32;
+        width += rand() % 64;
+        height += rand() % 64;
         addr = generate_map(width, height);
     }
 
