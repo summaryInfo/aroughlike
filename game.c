@@ -117,7 +117,7 @@
 #define STATIC_SCREEN_WIDTH 20
 #define STATIC_SCREEN_HEIGHT 8
 
-#define CAM_SPEED (5e-8/12)
+#define CAM_SPEED (5e-9)
 #define PLAYER_SPEED (6e-8)
 
 #define MAX_LEVEL 10
@@ -329,10 +329,12 @@ inline static void next_level(void) {
     if (++game.level < MAX_LEVEL) {
         game.keys = (struct input_state) {0};
         game.state = s_normal;
-        game.camera_y = game.camera_x = 50*scale.map;
         snprintf(buf, sizeof buf, "data/map_%d.txt", game.level);
 
         load_map(buf, stat(buf, &st) != 0);
+
+        game.camera_x = (game.player.box.x*scale.map + 512*game.map->tile_width/(scale.map + 1));
+        game.camera_y = (game.player.box.y*scale.map + 512*game.map->tile_height/(scale.map + 1));
 
         free(game.tmp_grid);
         game.tmp_grid = calloc(1, game.map->width*game.map->height);

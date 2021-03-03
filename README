@@ -36,6 +36,7 @@ Otherwise map is generated procedurally.
 
 * Camera (5)
 * Smooth level transitions (3)
+* Map visibility
 * Status indicators (2)
 * Idle/walking animations (2-5)
 * Animated objects (2)
