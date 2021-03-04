@@ -421,7 +421,7 @@ char *generate_map(int32_t width, int32_t height, unsigned seed) {
     push_rect(&state.rects, (struct rect){3, 3, width - 6, height - 6});
     subdivide(&state, state.rects.data[0]);
     for (ssize_t i = 0; i < MIN(width, height) - 32; i++) {
-        struct rect rec = state.rects.data[rand() % state.rects.size];
+        struct rect rec = state.rects.data[uniform(&state, 0, state.rects.size - 1)];
         struct rect sub = get_rand_subrect(&state, rec);
         if (is_possible(&state, sub)) {
             push_rect(&state.rooms, sub);
@@ -432,10 +432,10 @@ char *generate_map(int32_t width, int32_t height, unsigned seed) {
 
     /* Draw tunnels */
 
-    struct rect *first = &state.rooms.data[rand() % state.rooms.size];
+    struct rect *first = &state.rooms.data[uniform(&state, 0, state.rooms.size - 1)];
     struct rect *prev = first, *next = NULL;
     for (ssize_t i = 0; i < state.rooms.size; i++) {
-        int ncorridors = sqrt((rand() % 15) + 1);
+        int ncorridors = sqrt(uniform(&state, 1, 16));
         for (int r = 0; r < ncorridors; r++) {
             next = find_closest_to(&state, prev);
             if (!next) goto finish_tunnels;

@@ -128,95 +128,21 @@ void free_image(struct image *im) {
 struct do_fill_arg {
     color_t *ptr;
     color_t fg;
-    size_t h;
-    size_t w;
-    size_t stride;
+    ssize_t h;
+    ssize_t w;
+    ssize_t stride;
 };
 
 static HOT void do_fill_unaligned(void *varg) {
     struct do_fill_arg *arg = varg;
 
-    for (size_t j = 0; j < arg->h; j++, arg->ptr += arg->stride) {
+    for (ssize_t j = 0; j < arg->h; j++, arg->ptr += arg->stride) {
         switch (arg->w) {
-        case 3: arg->ptr[2] = arg->fg; //fallthrough
-        case 2: arg->ptr[1] = arg->fg; //fallthrough
-        case 1: arg->ptr[0] = arg->fg; //fallthrough
+        case 3: arg->ptr[2] = color_blend(arg->ptr[2], arg->fg); //fallthrough
+        case 2: arg->ptr[1] = color_blend(arg->ptr[1], arg->fg); //fallthrough
+        case 1: arg->ptr[0] = color_blend(arg->ptr[0], arg->fg); //fallthrough
         default:;
         }
-    }
-
-}
-
-static HOT void do_fill_aligned(void *varg) {
-    struct do_fill_arg *arg = varg;
-
-    __m128i val = _mm_set1_epi32(arg->fg);
-    for (size_t j = 0; j < arg->h; j++) {
-        char *ptr = (char *)(arg->ptr + arg->stride*j);
-        size_t i = 0, pref = (MIN(64 - ((uintptr_t)ptr & 63), arg->w*4) & 63);
-        for (; i < pref; i += 16) _mm_stream_si128((void *)(ptr + i), val);
-        for (; i + 64 < arg->w*4; i += 64) {
-            _mm_stream_si128((void *)(ptr + i), val);
-            _mm_stream_si128((void *)(ptr + i + 16), val);
-            _mm_stream_si128((void *)(ptr + i + 32), val);
-            _mm_stream_si128((void *)(ptr + i + 48), val);
-        }
-        for (; i < arg->w*4; i += 16) _mm_stream_si128((void *)(ptr + i), val);
-    }
-    _mm_sfence();
-}
-
-void image_queue_fill(struct image im, struct rect rect, color_t fg) {
-    color_t *data = ASSUMEALIGNED(im.data, CACHE_LINE);
-    size_t stride = (im.width + 3) & ~3;
-    if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
-        if (rect.x & 3) {
-            size_t pref = MIN(4 - (rect.x & 3), rect.width);
-            struct do_fill_arg arg = {
-                &data[rect.y * stride + rect.x],
-                fg, rect.height, pref, stride
-            };
-            submit_work(do_fill_unaligned, &arg, sizeof arg);
-            rect.width -= pref;
-            rect.x += pref;
-        }
-
-        if (!(rect.width & ~3)) return;
-
-        if (rect.height < 2*(int)nproc) {
-            struct do_fill_arg arg = {
-                &data[rect.y * stride + rect.x],
-                fg, rect.height, rect.width & ~3, stride
-            };
-            submit_work(do_fill_aligned, &arg, sizeof arg);
-        } else {
-            size_t block = rect.height/nproc;
-            for (ssize_t i = 0; i < nproc; i++) {
-                struct do_fill_arg arg = {
-                    &data[(rect.y + i*block) * stride + rect.x],
-                    fg, block, rect.width & ~3, stride
-                };
-                submit_work(do_fill_aligned, &arg, sizeof arg);
-            }
-
-            if (nproc*block != (size_t)rect.height) {
-                struct do_fill_arg arg = {
-                    &data[(rect.y + nproc*block) * stride + rect.x],
-                    fg, rect.height - nproc*block, rect.width & ~3, stride
-                };
-                submit_work(do_fill_aligned, &arg, sizeof arg);
-            }
-        }
-
-        if (rect.width & 3) {
-            struct do_fill_arg arg = {
-                &data[rect.y * stride + rect.x + (rect.width & ~3)],
-                fg, rect.height, rect.width & 3, stride
-            };
-            submit_work(do_fill_unaligned, &arg, sizeof arg);
-        }
-
-        drain_work();
     }
 }
 
@@ -236,7 +162,72 @@ static FORCEINLINE inline __m128i blend4(__m128i under, __m128i over) {
     __m128i mul_1 = _mm_mulhi_epu16(u16_1, mal_1);
     __m128i pixel = _mm_packus_epi16(mul_0, mul_1);
 
-    return _mm_adds_epi8(over, pixel);
+    return _mm_adds_epu8(over, pixel);
+}
+
+static HOT void do_fill_aligned(void *varg) {
+    struct do_fill_arg *arg = varg;
+
+    const __m128i val = _mm_set1_epi32(arg->fg);
+    for (ssize_t j = 0; j < arg->h; j++) {
+        for (ssize_t i = 0; i < arg->w; i += 4) {
+            color_t *ptr = arg->ptr + arg->stride*j + i;
+            const __m128i dst = _mm_load_si128((void *)ptr);
+            _mm_store_si128((void *)ptr, blend4(dst, val));
+        }
+    }
+}
+
+void image_queue_fill(struct image im, struct rect rect, color_t fg) {
+    color_t *data = ASSUMEALIGNED(im.data, CACHE_LINE);
+    ssize_t stride = (im.width + 3) & ~3;
+    if (intersect_with(&rect, &(struct rect){0, 0, im.width, im.height})) {
+        if (rect.x & 3) {
+            ssize_t pref = MIN(4 - (rect.x & 3), rect.width);
+            struct do_fill_arg arg = {
+                &data[rect.y * stride + rect.x],
+                fg, rect.height, pref, stride
+            };
+            submit_work(do_fill_unaligned, &arg, sizeof arg);
+            rect.width -= pref;
+            rect.x += pref;
+        }
+
+        if (rect.width & ~3) {
+            if (rect.height < 2*(int)nproc) {
+                struct do_fill_arg arg = {
+                    &data[rect.y * stride + rect.x],
+                    fg, rect.height, rect.width & ~3, stride
+                };
+                submit_work(do_fill_aligned, &arg, sizeof arg);
+            } else {
+                ssize_t block = rect.height/nproc;
+                for (ssize_t i = 0; i < nproc; i++) {
+                    struct do_fill_arg arg = {
+                        &data[(rect.y + i*block) * stride + rect.x],
+                        fg, block, rect.width & ~3, stride
+                    };
+                    submit_work(do_fill_aligned, &arg, sizeof arg);
+                }
+
+                if (nproc*block != (ssize_t)rect.height) {
+                    struct do_fill_arg arg = {
+                        &data[(rect.y + nproc*block) * stride + rect.x],
+                        fg, rect.height - nproc*block, rect.width & ~3, stride
+                    };
+                    submit_work(do_fill_aligned, &arg, sizeof arg);
+                }
+            }
+        }
+
+        if (rect.width & 3) {
+            struct do_fill_arg arg = {
+                &data[rect.y * stride + rect.x + (rect.width & ~3)],
+                fg, rect.height, rect.width & 3, stride
+            };
+            submit_work(do_fill_unaligned, &arg, sizeof arg);
+        }
+    }
 }
 
 static FORCEINLINE inline color_t image_sample(struct image src, ssize_t x, ssize_t y) {
@@ -433,31 +424,33 @@ void image_queue_blt(struct image dst, struct rect drect, struct image src, stru
                 drect.x += 4 - (drect.x & 3);
             }
 
-            if (drect.height*drect.width < 256*(int)nproc) {
-                struct do_blt_arg arg = {
-                    drect.height, drect.width & ~3, dstride, sstride,
-                    &ddata[drect.y*dstride+drect.x],
-                    &sdata[srect.y*sstride+srect.x]
-                };
-                submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
-            } else {
-                ssize_t block = drect.height/nproc;
-                for (ssize_t i = 0; i < nproc; i++) {
+            if (drect.width & ~3) {
+                if (drect.height*drect.width < 256*(int)nproc) {
                     struct do_blt_arg arg = {
-                        block, drect.width & ~3, dstride, sstride,
-                        &ddata[(drect.y + block*i)*dstride+drect.x],
-                        &sdata[(srect.y + block*i)*sstride+srect.x]
+                        drect.height, drect.width & ~3, dstride, sstride,
+                        &ddata[drect.y*dstride+drect.x],
+                        &sdata[srect.y*sstride+srect.x]
                     };
                     submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
-                }
+                } else {
+                    ssize_t block = drect.height/nproc;
+                    for (ssize_t i = 0; i < nproc; i++) {
+                        struct do_blt_arg arg = {
+                            block, drect.width & ~3, dstride, sstride,
+                            &ddata[(drect.y + block*i)*dstride+drect.x],
+                            &sdata[(srect.y + block*i)*sstride+srect.x]
+                        };
+                        submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
+                    }
 
-                if (nproc*block != drect.height) {
-                    struct do_blt_arg arg = {
-                        drect.height - nproc*block, drect.width & ~3, dstride, sstride,
-                        &ddata[(drect.y + block*nproc)*dstride+drect.x],
-                        &sdata[(srect.y + block*nproc)*sstride+srect.x]
-                    };
-                    submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
+                    if (nproc*block != drect.height) {
+                        struct do_blt_arg arg = {
+                            drect.height - nproc*block, drect.width & ~3, dstride, sstride,
+                            &ddata[(drect.y + block*nproc)*dstride+drect.x],
+                            &sdata[(srect.y + block*nproc)*sstride+srect.x]
+                        };
+                        submit_work((uintptr_t)arg.src & 15 ? do_blt_aligned : do_blt_aligned2, &arg, sizeof arg);
+                    }
                 }
             }
 
@@ -490,35 +483,37 @@ void image_queue_blt(struct image dst, struct rect drect, struct image src, stru
                 drect.x = 0;
             }
 
-            if (drect.height*drect.width < 256*nproc) {
-                    struct do_blt_scale_arg arg = {
-                        drect.height + MIN(drect.y, 0), drect.width & ~3, dstride, sstride,
-                        sx0, (srect.y << FIXPREC) - MIN(drect.y, 0)*yscale, xscale, yscale,
-                        &ddata[MAX(drect.y, 0) * dstride + drect.x], src,
-                    };
-                    submit_work(do_blt_aligned_scaling_nearest, &arg, sizeof arg);
-                submit_work(mode == sample_nearest ? do_blt_aligned_scaling_nearest :
-                            do_blt_aligned_scaling_linear, &arg, sizeof arg);
-            } else {
-                ssize_t block = (drect.height - MAX(-drect.y, 0))/nproc;
-                for (ssize_t i = 0; i < nproc; i++) {
-                    struct do_blt_scale_arg arg = {
-                        block, drect.width & ~3, dstride, sstride,
-                        sx0, (srect.y << FIXPREC) + (i*block + MAX(-drect.y, 0))*yscale, xscale, yscale,
-                        &ddata[(MAX(drect.y, 0) + i*block) * dstride + drect.x], src,
-                    };
+            if (drect.width & ~3) {
+                if (drect.height*drect.width < 256*nproc) {
+                        struct do_blt_scale_arg arg = {
+                            drect.height + MIN(drect.y, 0), drect.width & ~3, dstride, sstride,
+                            sx0, (srect.y << FIXPREC) - MIN(drect.y, 0)*yscale, xscale, yscale,
+                            &ddata[MAX(drect.y, 0) * dstride + drect.x], src,
+                        };
+                        submit_work(do_blt_aligned_scaling_nearest, &arg, sizeof arg);
                     submit_work(mode == sample_nearest ? do_blt_aligned_scaling_nearest :
                                 do_blt_aligned_scaling_linear, &arg, sizeof arg);
-                }
+                } else {
+                    ssize_t block = (drect.height - MAX(-drect.y, 0))/nproc;
+                    for (ssize_t i = 0; i < nproc; i++) {
+                        struct do_blt_scale_arg arg = {
+                            block, drect.width & ~3, dstride, sstride,
+                            sx0, (srect.y << FIXPREC) + (i*block + MAX(-drect.y, 0))*yscale, xscale, yscale,
+                            &ddata[(MAX(drect.y, 0) + i*block) * dstride + drect.x], src,
+                        };
+                        submit_work(mode == sample_nearest ? do_blt_aligned_scaling_nearest :
+                                    do_blt_aligned_scaling_linear, &arg, sizeof arg);
+                    }
 
-                if (nproc*block != drect.height) {
-                    struct do_blt_scale_arg arg = {
-                        drect.height + MIN(drect.y, 0) - block*nproc, drect.width & ~3, dstride, sstride,
-                        sx0, (srect.y << FIXPREC) + (nproc*block+MAX(-drect.y, 0))*yscale, xscale, yscale,
-                        &ddata[(MAX(drect.y, 0) + nproc*block) * dstride + drect.x], src,
-                    };
-                    submit_work(mode == sample_nearest ? do_blt_aligned_scaling_nearest :
-                                do_blt_aligned_scaling_linear, &arg, sizeof arg);
+                    if (nproc*block != drect.height) {
+                        struct do_blt_scale_arg arg = {
+                            drect.height + MIN(drect.y, 0) - block*nproc, drect.width & ~3, dstride, sstride,
+                            sx0, (srect.y << FIXPREC) + (nproc*block+MAX(-drect.y, 0))*yscale, xscale, yscale,
+                            &ddata[(MAX(drect.y, 0) + nproc*block) * dstride + drect.x], src,
+                        };
+                        submit_work(mode == sample_nearest ? do_blt_aligned_scaling_nearest :
+                                    do_blt_aligned_scaling_linear, &arg, sizeof arg);
+                    }
                 }
             }
 

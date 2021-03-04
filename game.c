@@ -108,6 +108,7 @@
 #define INV_DUR (2*SEC)
 #define DMG_DUR (SEC)
 #define DMG_ANI_DUR (SEC/3)
+#define FADEIN_DUR (4*SEC/5)
 
 #define STATIC_SCREEN_WIDTH 20
 #define STATIC_SCREEN_HEIGHT 8
@@ -134,7 +135,7 @@ enum timers {
 
 struct gamestate {
     struct tilemap *map;
-    bool *tmp_grid;
+    bool fading;
     struct tileset *tilesets[NTILESETS];
 
     double camera_x;
@@ -179,6 +180,7 @@ struct gamestate {
     /* FPS stats */
     bool last_redrawn;
     struct timespec last_frame;
+    struct timespec last_map_loaded;
     double avg_delta;
 
     struct input_state {
@@ -233,7 +235,6 @@ bool redraw(struct timespec current, bool force) {
 
     /* Draw map */
     tilemap_queue_draw(backbuf, game.map, map_x, map_y);
-
     drain_work();
 
     /* Draw player */
@@ -251,24 +252,14 @@ bool redraw(struct timespec current, bool force) {
                 inv_rest*backbuf.width/inv_total, 4*scale.interface}, INV_COLOR);
     }
 
-    /* Draw fps counter */
-    queue_fps();
-    drain_work();
-
-    /* Draw damage indicators */
-    int64_t dmg_diff = TIMEDIFF(game.player.last_damage, current);
-    if (dmg_diff < DMG_ANI_DUR) {
-        // Damge indicators are blue for absorbed damage
-        // and red for effective
-        tile_t dmg = (game.player.inv_at_damge_start ? TILE_PLAYER_INV_DAMAGE : TILE_PLAYER_DAMAGE) + (4*dmg_diff/(SEC/3));
-        tileset_queue_tile(backbuf, game.tilesets[TILESET_ID(dmg)], TILE_ID(dmg), player_x, player_y, game.map->scale);
-    }
-
     /* Draw key */
     if (game.player.has_key) {
         tileset_queue_tile(backbuf, game.tilesets[TILESET_ID(TILE_KEY_STATIC)],
                 TILE_ID(TILE_KEY_STATIC), 20, 24 + TILE_HEIGHT*scale.interface, scale.interface);
     }
+
+    /* Draw fps counter */
+    queue_fps();
 
     /* Draw lives */
     for (int i = 0; i < (game.player.lives + 1)/2; i++) {
@@ -286,15 +277,26 @@ bool redraw(struct timespec current, bool force) {
         drain_work();
     }
 
+    /* Draw damage indicators */
+    int64_t dmg_diff = TIMEDIFF(game.player.last_damage, current);
+    if (dmg_diff < DMG_ANI_DUR) {
+        // Damge indicators are blue for absorbed damage
+        // and red for effective
+        tile_t dmg = (game.player.inv_at_damge_start ? TILE_PLAYER_INV_DAMAGE : TILE_PLAYER_DAMAGE) + (4*dmg_diff/(SEC/3));
+        tileset_queue_tile(backbuf, game.tilesets[TILESET_ID(dmg)], TILE_ID(dmg), player_x, player_y, game.map->scale);
+    }
+
     /* Draw message screen if required by state */
     struct tilemap *screen_to_draw = game.screens[game.state];
     if (screen_to_draw) {
         int32_t sx = backbuf.width/2 - screen_to_draw->width*screen_to_draw->tile_width*screen_to_draw->scale/2;
         int32_t sy = backbuf.height/2 - screen_to_draw->height*screen_to_draw->tile_height*screen_to_draw->scale/2;
         tilemap_queue_draw(backbuf, screen_to_draw, sx, sy);
+        drain_work();
+
     }
 
-    drain_work();
+
     return 1;
 }
 
@@ -393,11 +395,8 @@ inline static void next_level(void) {
 
         load_map(buf, stat(buf, &st) != 0);
 
-        game.camera_x = -game.player.box.x*scale.map + 64*game.map->tile_width/(scale.map + 1);
-        game.camera_y = -game.player.box.y*scale.map + 64*game.map->tile_height/(scale.map + 1);
-
-        free(game.tmp_grid);
-        game.tmp_grid = calloc(1, game.map->width*game.map->height);
+        game.camera_x = -game.player.box.x*scale.map;
+        game.camera_y = -game.player.box.y*scale.map;
 
         discover((game.player.box.x + game.map->tile_width/2)/game.map->tile_width,
                  (game.player.box.y + game.map->tile_height/2)/game.map->tile_height);
@@ -621,8 +620,17 @@ int64_t tick(struct timespec current) {
         if (game.state == s_normal)
             move_player(tick_delta, current);
 
+        int64_t fadein_diff = TIMEDIFF(game.last_map_loaded, current);
         game.want_redraw |= TIMEDIFF(game.player.inv_end, current) < 0 ||
-                TIMEDIFF(game.player.last_damage, current) < DMG_ANI_DUR;
+                TIMEDIFF(game.player.last_damage, current) < DMG_ANI_DUR || fadein_diff < FADEIN_DUR;
+
+        if (fadein_diff < FADEIN_DUR) {
+            game.fading = 1;
+            tilemap_fade(game.map, 1. - fadein_diff/(double)FADEIN_DUR);
+        } else if (game.fading) {
+            game.fading = 0;
+            tilemap_fade(game.map, 0);
+        }
 
         game.tick_early = 0;
         game.timers[tick_timer] = current;
@@ -866,7 +874,7 @@ static void load_map(const char *file, bool generated) {
             nel = newnel;
         } while (nel);
     } else {
-        height = width = uniform(32, 95);
+        height = width = uniform(33, 95);
         width += uniform(0, 63);
         height += uniform(0, 63);
         struct timespec time;
@@ -954,7 +962,11 @@ format_error:
 
     if (generated) free(addr);
     else munmap(addr, statbuf.st_size + 1);
-    tilemap_refresh(game.map);
+
+    tilemap_fade(game.map, 1);
+
+    // Set map load time to current for fade-in effect
+    clock_gettime(CLOCK_TYPE, &game.last_map_loaded);
 }
 
 static struct tilemap *create_screen(size_t width, size_t height) {
@@ -1186,7 +1198,6 @@ void init(void) {
 
 void cleanup(void) {
     free_tilemap(game.map);
-    free(game.tmp_grid);
     for (size_t i = 0; i < s_MAX; i++)
         if (game.screens[i]) free_tilemap(game.screens[i]);
     for (size_t i = 0; i < NTILESETS; i++)

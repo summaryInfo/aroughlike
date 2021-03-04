@@ -138,6 +138,9 @@ struct tilemap *create_tilemap(size_t width, size_t height, int32_t tile_width, 
     map->tile_height = tile_height;
     map->cbuf = create_image(width*tile_width, height*tile_height);
 
+    image_queue_fill(map->cbuf, (struct rect){0, 0, width*tile_width, height*tile_height}, BG_COLOR);
+    drain_work();
+
     /* Set every tile to NOTILE */
     memset(map->tiles, 0xFF, width*height*TILEMAP_LAYERS*sizeof(tile_t));
 
@@ -191,22 +194,28 @@ void tilemap_set_scale(struct tilemap *map, double scale) {
 
 bool tilemap_refresh(struct tilemap *map) {
     if (!map->has_dirty) return 0;
+
+    if (map->fade > 0.001) {
+        image_queue_fill(map->cbuf, (struct rect){0, 0, map->width*map->tile_width,
+            map->height*map->tile_height}, BG_COLOR);
+        drain_work();
+    }
     for (size_t i = 0; i < TILEMAP_LAYERS; i++) {
         for (size_t yi = 0; yi < map->height; yi++) {
             for (size_t xi = 0; xi < map->width; xi++) {
-                if (get_dirty(map, xi, yi)) {
-                    if (get_visited(map, xi, yi)) {
-                        tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
-                        if (tile == NOTILE) continue;
-                        tileset_queue_tile(map->cbuf, map->sets[TILESET_ID(tile)],
-                                           TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
-                    } else if (i == 0) {
-                        image_queue_fill(map->cbuf, (struct rect) { xi*map->tile_width,
-                            yi*map->tile_height, map->tile_width, map->tile_height }, BG_COLOR);
-                    }
+                if (get_dirty(map, xi, yi) && get_visited(map, xi, yi)) {
+                    tile_t tile = tilemap_get_tile_unsafe(map, xi, yi, i);
+                    if (tile == NOTILE) continue;
+                    tileset_queue_tile(map->cbuf, map->sets[TILESET_ID(tile)],
+                                       TILE_ID(tile), xi*map->tile_width, yi*map->tile_height, 1);
                 }
             }
         }
+        drain_work();
+    }
+    if (map->fade > 0.001) {
+        image_queue_fill(map->cbuf, (struct rect){0, 0, map->width*map->tile_width,
+            map->height*map->tile_height}, color_apply_a(BG_COLOR, map->fade));
         drain_work();
     }
     map->has_dirty = 0;
@@ -234,6 +243,20 @@ void tilemap_animation_tick(struct tilemap *map) {
             }
         }
     }
+}
+
+void tilemap_fade(struct tilemap *map, double val) {
+    double old_fade = map->fade;
+
+    if ((map->fade = val) <= 0.001 && old_fade > 0.001) {
+        image_queue_fill(map->cbuf, (struct rect){0, 0, map->width*map->tile_width,
+            map->height*map->tile_height}, BG_COLOR);
+        drain_work();
+    }
+
+    map->has_dirty = 1;
+    size_t dirty_size = ((map->width + 31) >> 5)*map->height*sizeof(uint32_t);
+    memset(map->dirty, 0xFF, dirty_size);
 }
 
 void tilemap_random_tick(struct tilemap *map, unsigned *seed) {

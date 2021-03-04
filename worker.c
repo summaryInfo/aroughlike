@@ -20,7 +20,7 @@ struct job {
     struct job *next;
     void (*func)(void *);
     char data[];
-};
+} __attribute__((aligned(16)));
 
 int nproc;
 

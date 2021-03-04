@@ -34,6 +34,10 @@ FORCEINLINE inline static color_t mk_color(uint8_t r, uint8_t g, uint8_t b, uint
     return ((color_t)a << 24U) | (r << 16U) | (g << 8U) | b;
 }
 
+FORCEINLINE inline static color_t color_apply_a(color_t c, double a) {
+    return mk_color(color_r(c)*a, color_g(c)*a, color_b(c)*a, 255*a);
+}
+
 FORCEINLINE inline static color_t color_blend(color_t dstc, color_t srcc) {
     ssize_t alpha = 255 - color_a(srcc);
     return mk_color(
