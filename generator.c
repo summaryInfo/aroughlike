@@ -220,13 +220,17 @@ static void generate_walls(struct genstate *state, struct rect room) {
     /* Create walk-throughs */
     if (h_wall_x1 - h_wall_x0 > 2 && h_wall_type) {
         bool vsplit = v_wall_type && h_wall_x0 <= v_wall_x && v_wall_x <= h_wall_x1;
-        if (h_wall_type & 1) c_set(state, uniform(state, h_wall_x0 + 1, (vsplit ? v_wall_x : h_wall_x1) - 1), h_wall_y, FLOOR);
-        if (h_wall_type & 2) c_set(state, uniform(state, (vsplit ? v_wall_x : h_wall_x0) + 1, h_wall_x1 - 1), h_wall_y, FLOOR);
+        if (h_wall_type & 1 && (!vsplit || h_wall_x0 + 1 <= v_wall_x - 1))
+            c_set(state, uniform(state, h_wall_x0 + 1, (vsplit ? v_wall_x : h_wall_x1) - 1), h_wall_y, FLOOR);
+        if (h_wall_type & 2 && (!vsplit || v_wall_x + 1 <= h_wall_x1 - 1))
+            c_set(state, uniform(state, (vsplit ? v_wall_x : h_wall_x0) + 1, h_wall_x1 - 1), h_wall_y, FLOOR);
     }
     if (v_wall_y1 - v_wall_y0 > 2 && v_wall_type) {
         bool hsplit = h_wall_type && v_wall_y0 <= h_wall_y && h_wall_y <= v_wall_y1;
-        if (v_wall_type & 1) c_set(state, v_wall_x, uniform(state, v_wall_y0 + 1, (hsplit ? h_wall_y : v_wall_y1) - 1), FLOOR);
-        if (v_wall_type & 2) c_set(state, v_wall_x, uniform(state, (hsplit ? h_wall_y : v_wall_y0) + 1, v_wall_y1 - 1), FLOOR);
+        if (v_wall_type & 1 && (!hsplit || v_wall_y0 + 1 <= h_wall_y - 1))
+            c_set(state, v_wall_x, uniform(state, v_wall_y0 + 1, (hsplit ? h_wall_y : v_wall_y1) - 1), FLOOR);
+        if (v_wall_type & 2 && (!hsplit || h_wall_y + 1 >= v_wall_y1 - 1))
+            c_set(state, v_wall_x, uniform(state, (hsplit ? h_wall_y : v_wall_y0) + 1, v_wall_y1 - 1), FLOOR);
     }
 }
 
