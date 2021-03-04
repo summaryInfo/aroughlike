@@ -284,7 +284,7 @@ bool redraw(struct timespec current, bool force) {
     return 1;
 }
 
-#define VISIBILITY_RADIUS 20
+#define VISIBILITY_RADIUS 24
 
 inline static int32_t dist2(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
     return  (x0 - x1)*(x0 - x1) + (y0 - y1)*(y0 - y1);
@@ -304,84 +304,70 @@ static void trace_ray(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
         int32_t er = dy;
         int32_t ystep = (y0 < y1) - (y0 > y1);
         for (int32_t y = y0, x = x0; x >= x1; x--) {
-            tilemap_visit(game.map, step ? y : x, step ? x: y);
+            for (int32_t yy = y - 1; yy < y + 1; yy++)
+                for (int32_t xx = x - 1; xx < x + 1; xx++)
+                    if ((yy == y && xx == x) || get_tiletype(step ? y : x, step ? x : y) == WALL)
+                        tilemap_visit(game.map, step ? yy : xx, step ? xx: yy);
             if (get_tiletype(step ? y : x, step ? x : y) == WALL) break;
             er += dy;
             if (2 * er >= dx) {
                 y += ystep;
                 er -= dx;
-                tilemap_visit(game.map, step ? y : x, step ? x: y);
-                if (get_tiletype(step ? y : x, step ? x : y) == WALL) break;
+                for (int32_t yy = y - 1; yy < y + 1; yy++)
+                    for (int32_t xx = x - 1; xx < x + 1; xx++)
+                        if ((yy == y && xx == x) || get_tiletype(step ? y : x, step ? x : y) == WALL)
+                            tilemap_visit(game.map, step ? yy : xx, step ? xx: yy);
             }
         }
     } else {
         int32_t dx = x1 - x0, dy = abs(y1 - y0);
         int32_t er = dy, ystep = (y0 < y1) - (y0 > y1);
         for (int32_t y = y0, x = x0; x <= x1; x++) {
-            tilemap_visit(game.map, step ? y : x, step ? x: y);
+            for (int32_t yy = y - 1; yy < y + 1; yy++)
+                for (int32_t xx = x - 1; xx < x + 1; xx++)
+                    if ((yy == y && xx == x) || get_tiletype(step ? y : x, step ? x : y) == WALL)
+                        tilemap_visit(game.map, step ? yy : xx, step ? xx: yy);
             if (get_tiletype(step ? y : x, step ? x : y) == WALL) break;
             er += dy;
             if (2 * er >= dx) {
                 y += ystep;
                 er -= dx;
-                tilemap_visit(game.map, step ? y : x, step ? x: y);
-                if (get_tiletype(step ? y : x, step ? x : y) == WALL) break;
+                for (int32_t yy = y - 1; yy < y + 1; yy++)
+                    for (int32_t xx = x - 1; xx < x + 1; xx++)
+                        if ((yy == y && xx == x) || get_tiletype(step ? y : x, step ? x : y) == WALL)
+                            tilemap_visit(game.map, step ? yy : xx, step ? xx: yy);
             }
-        }
-    }
-}
-
-static void discover_1(int32_t x0, int32_t y0, int32_t x1, int32_t y1, bool prevwall) {
-    tilemap_visit(game.map, x1, y1);
-    game.tmp_grid[game.map->width*y1 + x1] = 1;
-
-
-    if (dist2(x0, y0, x1, y1) >= VISIBILITY_RADIUS*VISIBILITY_RADIUS) return;
-
-    //int32_t dy1 = (y1 >= y0), dy0 = -(y1 <= y0);
-    //int32_t dx1 = (x1 >= x0), dx0 = -(x1 <= x0);
-    for (int32_t x = x1 - 1; x <= x1 + 1; x++) {
-        for (int32_t y = y1 - 1; y <= y1 + 1; y++) {
-            char c = get_tiletype(x, y);
-            if (c != VOID && (!prevwall || c != WALL) && !game.tmp_grid[game.map->width*y + x])
-                discover_1(x0, y0, x, y, c == WALL);
         }
     }
 }
 
 inline static void discover(int32_t x0, int32_t y0) {
-    if (1) {
-        // Lets just use BFS insead of ray casting...
-        discover_1(x0, y0, x0, y0, 0);
-        memset(game.tmp_grid, 0, game.map->width*game.map->height);
-    } else {
-        int32_t x = VISIBILITY_RADIUS, y = 0;
+    int32_t x = VISIBILITY_RADIUS, y = 0;
 
-        trace_ray(x0, y0, x0 + x, y0);
-        trace_ray(x0, y0, x0 - x, y0);
-        trace_ray(x0, y0, x0, y0 + x);
-        trace_ray(x0, y0, x0, y0 - x);
+    trace_ray(x0, y0, x0 + x, y0);
+    trace_ray(x0, y0, x0 - x, y0);
+    trace_ray(x0, y0, x0, y0 + x);
+    trace_ray(x0, y0, x0, y0 - x);
 
-        int32_t err = 1 - VISIBILITY_RADIUS;
-        while (x > y) {
-            y++;
+    int32_t err = 1 - VISIBILITY_RADIUS;
+    while (x > y) {
+        y++;
 
-            if (err > 0) x--, err -= 2*x;
-            err = err + 2*y + 1;
+        if (err > 0) x--, err -= 2*x;
+        err = err + 2*y + 1;
 
-            if (x < y) break;
+        if (x < y) break;
 
-            trace_ray(x0, y0, x + x0, y + y0);
-            trace_ray(x0, y0, -x + x0, y + y0);
-            trace_ray(x0, y0, x + x0, -y + y0);
-            trace_ray(x0, y0, -x + x0, -y + y0);
+        trace_ray(x0, y0, x + x0, y + y0);
+        trace_ray(x0, y0, -x + x0, y + y0);
+        trace_ray(x0, y0, x + x0, -y + y0);
+        trace_ray(x0, y0, -x + x0, -y + y0);
 
-            if (x != y) {
-                trace_ray(x0, y0, y + x0, x + y0);
-                trace_ray(x0, y0, -y + x0, x + y0);
-                trace_ray(x0, y0, y + x0, -x + y0);
-                trace_ray(x0, y0, -y + x0, -x + y0);
-            }
+        if (x != y) {
+            trace_ray(x0, y0, y + x0, x + y0);
+            trace_ray(x0, y0, -y + x0, x + y0);
+            trace_ray(x0, y0, y + x0, -x + y0);
+            trace_ray(x0, y0, -y + x0, -x + y0);
         }
     }
 }
