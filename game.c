@@ -726,10 +726,12 @@ static tile_t decode_wall(const char *m, ssize_t w, ssize_t h, int x, int y) {
     if (bottom_left == FLOOR && bottom_right == FLOOR) return TILE_WALL_LEFT_RIGHT;
 
     if (left == FLOOR && right != FLOOR) {
-        if (top == FLOOR) return TILE_WALL_BOTTOM_RIGHT_EX(uni4);
+        if (top == FLOOR || top_right == FLOOR)
+            return TILE_WALL_BOTTOM_RIGHT_EX(uni4);
         return TILE_WALL_LEFT_(uni4);
     } else if (right == FLOOR && left != FLOOR) {
-        if (top == FLOOR) return TILE_WALL_BOTTOM_LEFT_EX(uni4);
+        if (top == FLOOR || top_left == FLOOR)
+            return TILE_WALL_BOTTOM_LEFT_EX(uni4);
         return TILE_WALL_RIGHT_(uni4);
     } else if (left == FLOOR && right == FLOOR) {
         return TILE_WALL_LEFT_RIGHT;
