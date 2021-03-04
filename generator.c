@@ -495,29 +495,46 @@ finish_tunnels:
 
     // Spawn point, exit, key
     {
-        int x, y;
+        int x, y, attempt = 0;
         do {
             x = uniform(&state, first->x + 1, first->x + first->width - 2);
             y = uniform(&state, first->y + 1, first->x + first->height - 2);
-        } while (c_get(&state, x, y) != FLOOR);
+            attempt++;
+        } while (c_get(&state, x, y) != FLOOR && attempt < 1000);
+        if (attempt == 1000) do {
+            x = uniform(&state, first->x, first->x + first->width - 1);
+            y = uniform(&state, first->y, first->x + first->height - 1);
+        } while (c_get(&state, x, y) == WALL);
         c_set(&state, x, y, PLAYER);
 
         bool has_key = uniform(&state, 0, 5);
+        attempt = 0;
 
         do {
             x = uniform(&state, prev->x + 1, prev->x + prev->width - 2);
             y = uniform(&state, prev->y + 1, prev->x + prev->height - 2);
+            attempt++;
         } while (c_get(&state, x, y) != FLOOR &&
-                 c_get(&state, x, y) != TRAP);
+                 c_get(&state, x, y) != TRAP && attempt < 1000);
+        if (attempt == 1000) do {
+            x = uniform(&state, prev->x, prev->x + prev->width - 1);
+            y = uniform(&state, prev->y, prev->x + prev->height - 1);
+        } while (c_get(&state, x, y) == WALL);
         c_set(&state, x, y, has_key ? CEXIT : EXIT);
 
         if (has_key) {
+            attempt = 0;
             prev = &state.rooms.data[uniform(&state, 0, state.rooms.size - 1)];
             do {
                 x = uniform(&state, prev->x, prev->x + prev->width - 1);
                 y = uniform(&state, prev->y, prev->x + prev->height - 1);
+                attempt++;
             } while (c_get(&state, x, y) != FLOOR &&
-                     c_get(&state, x, y) != TRAP);
+                     c_get(&state, x, y) != TRAP && attempt < 1000);
+            if (attempt == 1000) do {
+                x = uniform(&state, prev->x, prev->x + prev->width - 1);
+                y = uniform(&state, prev->y, prev->x + prev->height - 1);
+            } while (c_get(&state, x, y) == WALL);
             c_set(&state, x, y, KEY1);
         }
     }
@@ -531,6 +548,7 @@ finish_tunnels:
                 else if (r < 6) tile = SPOISON;
                 else if (r < 8) tile = IPOISON;
                 else if (r < 11) tile = SIPOISON;
+                else if (r < 50) tile = TRAP;
                 c_set(&state, x, y, tile);
             }
         }
