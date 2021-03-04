@@ -396,8 +396,8 @@ inline static void next_level(void) {
 
         load_map(buf, stat(buf, &st) != 0);
 
-        game.camera_x = (game.player.box.x*scale.map + 512*game.map->tile_width/(scale.map + 1));
-        game.camera_y = (game.player.box.y*scale.map + 512*game.map->tile_height/(scale.map + 1));
+        game.camera_x = -game.player.box.x*scale.map + 64*game.map->tile_width/(scale.map + 1);
+        game.camera_y = -game.player.box.y*scale.map + 64*game.map->tile_height/(scale.map + 1);
 
         free(game.tmp_grid);
         game.tmp_grid = calloc(1, game.map->width*game.map->height);
