@@ -147,22 +147,19 @@ static HOT void do_fill_unaligned(void *varg) {
 }
 
 static FORCEINLINE inline __m128i blend4(__m128i under, __m128i over) {
-    const __m128i zero = (__m128i)_mm_setr_epi32(0x00000000, 0x00000000, 0x00000000, 0x00000000);
-    const __m128i allo = (__m128i)_mm_setr_epi32(0x03FF03FF, 0x03FF03FF, 0x07FF07FF, 0x07FF07FF);
-    const __m128i alhi = (__m128i)_mm_setr_epi32(0x0BFF0BFF, 0x0BFF0BFF, 0x0FFF0FFF, 0x0FFF0FFF);
-    const __m128  m255 = (__m128)_mm_setr_epi32(0xFF00FF00, 0xFF00FF00, 0xFF00FF00, 0xFF00FF00);
+    const __m128i zero = _mm_set1_epi32(0x00000000);
+    const __m128  m255 = (__m128)_mm_set1_epi32(0x00FF00FF);
+    const __m128i div  = _mm_set1_epi16(-32639);
+    const __m128i allo = _mm_setr_epi32(0xFF03FF03, 0xFF03FF03, 0xFF07FF07, 0xFF07FF07);
+    const __m128i alhi = _mm_setr_epi32(0xFF0BFF0B, 0xFF0BFF0B, 0xFF0FFF0F, 0xFF0FFF0F);
 
-    __m128i u16_0 = _mm_cvtepu8_epi16(under);
-    __m128i u16_1 = _mm_unpackhi_epi8(under, zero);
-    __m128i al8_0 = _mm_shuffle_epi8(over, allo);
-    __m128i al8_1 = _mm_shuffle_epi8(over, alhi);
-    __m128i mal_0 = (__m128i)_mm_xor_ps(m255, (__m128)al8_0);
-    __m128i mal_1 = (__m128i)_mm_xor_ps(m255, (__m128)al8_1);
-    __m128i mul_0 = _mm_mulhi_epu16(u16_0, mal_0);
-    __m128i mul_1 = _mm_mulhi_epu16(u16_1, mal_1);
-    __m128i pixel = _mm_packus_epi16(mul_0, mul_1);
-
-    return _mm_adds_epu8(over, pixel);
+    __m128i mal_0 = (__m128i)_mm_xor_ps(m255, (__m128)_mm_shuffle_epi8(over, allo));
+    __m128i mal_1 = (__m128i)_mm_xor_ps(m255, (__m128)_mm_shuffle_epi8(over, alhi));
+    __m128i mul_0 = _mm_mullo_epi16(_mm_cvtepu8_epi16(under), mal_0);
+    __m128i mul_1 = _mm_mullo_epi16(_mm_unpackhi_epi8(under, zero), mal_1);
+    __m128i div_0 = _mm_srli_epi16(_mm_mulhi_epu16(mul_0, div), 7);
+    __m128i div_1 = _mm_srli_epi16(_mm_mulhi_epu16(mul_1, div), 7);
+    return _mm_adds_epu8(over, _mm_packus_epi16(div_0, div_1));
 }
 
 static HOT void do_fill_aligned(void *varg) {
