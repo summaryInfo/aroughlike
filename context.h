@@ -25,11 +25,14 @@
 #define ACTIVETRAP 't'
 #define PLAYER '@'
 #define EXIT 'x'
+#define CEXIT 'X'
 #define POISON 'P'
 #define IPOISON 'I'
 #define SPOISON 'p'
 #define SIPOISON 'i'
 #define FLOOR '.'
+#define KEY1 'K'
+#define KEY2 'k'
 #define VOID ' '
 
 typedef uint32_t color_t;

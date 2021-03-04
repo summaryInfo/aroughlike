@@ -32,6 +32,7 @@
 #define TILE_TRAP_1                  MKTILE(TILESET_ANIMATED,  4 * 24 + 1)
 #define TILE_TRAP_2                  MKTILE(TILESET_ANIMATED,  4 * 24 + 3)
 #define TILE_EXIT                    MKTILE(TILESET_STATIC,   10 * 3  + 9)
+#define TILE_CLOSED_EXIT             MKTILE(TILESET_STATIC,   10 * 3  + 8)
 
 #define TILE_POISON                  MKTILE(TILESET_ANIMATED,  4 * 17 + 3)
 #define TILE_POISON_0                MKTILE(TILESET_ANIMATED,  4 * 17 + 0)
@@ -53,6 +54,11 @@
 #define TILE_IPOISON_STATIC          MKTILE(TILESET_STATIC,   10 * 9  + 7)
 #define TILE_SPOISON_STATIC          MKTILE(TILESET_STATIC,   10 * 9  + 8)
 #define TILE_SIPOISON_STATIC         MKTILE(TILESET_STATIC,   10 * 8  + 7)
+#define TILE_KEY                     MKTILE(TILESET_ANIMATED,  4 * 18 + 0)
+#define TILE_KEY_0                   MKTILE(TILESET_ANIMATED,  4 * 18 + 1)
+#define TILE_KEY_1                   MKTILE(TILESET_ANIMATED,  4 * 18 + 2)
+#define TILE_KEY_2                   MKTILE(TILESET_ANIMATED,  4 * 18 + 3)
+#define TILE_KEY_STATIC              MKTILE(TILESET_STATIC,   10 * 9  + 9)
 
 #define TILE_TORCH_TOP               MKTILE(TILESET_ANIMATED,  4 * 26 + 2)
 #define TILE_TORCH_LEFT              MKTILE(TILESET_ANIMATED,  4 * 25 + 2)
@@ -110,6 +116,7 @@
 #define PLAYER_SPEED (6e-8)
 
 #define MAX_LEVEL 10
+#define HANDS_LENGTH 3
 
 struct box {
     double x;
@@ -139,6 +146,7 @@ struct gamestate {
         int lives;
         // End of invincibility
         bool inv_at_damge_start;
+        bool has_key;
         struct timespec inv_end;
         struct timespec inv_start;
         struct timespec last_damage;
@@ -256,9 +264,15 @@ bool redraw(struct timespec current, bool force) {
         tileset_queue_tile(backbuf, game.tilesets[TILESET_ID(dmg)], TILE_ID(dmg), player_x, player_y, game.map->scale);
     }
 
+    /* Draw key */
+    if (game.player.has_key) {
+        tileset_queue_tile(backbuf, game.tilesets[TILESET_ID(TILE_KEY_STATIC)],
+                TILE_ID(TILE_KEY_STATIC), 20, 24 + TILE_HEIGHT*scale.interface, scale.interface);
+    }
+
     /* Draw lives */
     for (int i = 0; i < (game.player.lives + 1)/2; i++) {
-        int32_t px = 20 + ((game.player.lives + 1)/2 - i)*TILE_WIDTH*scale.interface/2;
+        int32_t px = 20 + ((game.player.lives + 1)/2 - i - 1)*TILE_WIDTH*scale.interface/2;
         int32_t py = 24 - 8*(i & 1) ;
         tile_t lives_tile;
         if ((game.player.lives & 1) & !i) {
@@ -286,16 +300,13 @@ bool redraw(struct timespec current, bool force) {
 
 #define VISIBILITY_RADIUS 24
 
-inline static int32_t dist2(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
-    return  (x0 - x1)*(x0 - x1) + (y0 - y1)*(y0 - y1);
-}
-
 inline static char get_tiletype(int x, int y) {
     uint32_t type = TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 1));
     return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 0)) : type;
 }
 
 static void trace_ray(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+    /* That is hard to implement proper vision... */
     bool step = abs(y1 - y0) > abs(x1 - x0);
     if (step) { SWAP(x0, y0); SWAP(x1, y1); }
 
@@ -418,6 +429,7 @@ inline static struct box get_bounding_box_for(char cell, int32_t x, int32_t y) {
             y*TILE_HEIGHT + TILE_HEIGHT/2,
             0, 0,
         };
+    case KEY1:
     case POISON:
     case IPOISON:
     case SPOISON:
@@ -507,10 +519,13 @@ static void move_player(int64_t tick_delta, struct timespec current) {
             case IPOISON:
             case SPOISON:
             case SIPOISON:
+            case KEY1:
                 if (fmin(fabs(hx), fabs(hy)) > 0) {
                     if (cell == POISON) game.player.lives += 2;
                     else if (cell == SPOISON) game.player.lives++;
-                    else {
+                    else if (cell == KEY1) {
+                        game.player.has_key = 1;
+                    } else {
                         int64_t inc = (1 + (cell == IPOISON))*INV_DUR;
                         game.player.inv_start = current;
                         if (TIMEDIFF(game.player.inv_end, current) > 0)
@@ -625,6 +640,7 @@ inline static int32_t uniform(int32_t minn, int32_t maxn) {
 static void reset_game(void) {
     game.level = 0;
     game.player.lives = 1;
+    game.player.has_key = 0;
     game.player.inv_end = game.player.inv_start = (struct timespec){0};
     next_level();
 
@@ -640,6 +656,10 @@ inline static void change_scale(double inc) {
     game.camera_y = game.camera_y*scale.map/old_scale;
     tilemap_set_scale(game.map, scale.map);
     game.want_redraw = 1;
+}
+
+inline static int32_t dist2(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+    return  (x0 - x1)*(x0 - x1) + (y0 - y1)*(y0 - y1);
 }
 
 /* This function is called on every key press */
@@ -685,6 +705,15 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
         break;
     case k_Escape:
         want_exit = 1;
+        break;
+    case k_space:
+        if (dist2((game.player.box.x + game.player.box.width/2)/game.map->tile_width,
+                  (game.player.box.y + game.player.box.height/2)/game.map->tile_height,
+                game.exit_x, game.exit_y) < HANDS_LENGTH*HANDS_LENGTH) {
+            tilemap_set_tile(game.map, game.exit_x, game.exit_y, 1, TILE_EXIT);
+            game.player.has_key = 0;
+            game.want_redraw = 1;
+        }
         break;
     }
 }
@@ -858,6 +887,7 @@ format_error:
     tilemap_set_scale(game.map, scale.map);
 
     int32_t x = 0, y = 0;
+    bool has_key = 0;
     for (char *ptr = addr, c; (c = *ptr); ptr++) {
         switch(c) {
         case WALL: /* wall */;
@@ -868,14 +898,17 @@ format_error:
             tilemap_set_tile(game.map, x++, y, 0, TILE_VOID);
             break;
         case PLAYER: /* player start */
-            game.player.box.x = x*TILE_WIDTH;
-            game.player.box.y = y*TILE_HEIGHT;
+            game.player.box.x = x*game.map->tile_width;
+            game.player.box.y = y*game.map->tile_height;
             tilemap_set_tile(game.map, x, y, 0, decode_floor(addr, width, height, x, y));
             x++;
             break;
         case TRAP: /* trap */
             tilemap_set_tile(game.map, x++, y, 0, TILE_TRAP);
             break;
+        case KEY1: /* exit key */
+            has_key = 1;
+            // fallthrough
         case POISON: /* live poison */
         case IPOISON: /* invincibility poison */
         case SPOISON: /* small live poison */
@@ -886,14 +919,16 @@ format_error:
             case IPOISON: tile = TILE_IPOISON; break;
             case SPOISON: tile = TILE_SPOISON; break;
             case SIPOISON: tile = TILE_SIPOISON; break;
+            case KEY1: tile = TILE_KEY; break;
             }
             tilemap_set_tile(game.map, x, y, 0, decode_floor(addr, width, height, x, y));
             tilemap_set_tile(game.map, x++, y, 1, tile);
             break;
         }
         case EXIT: /* exit */
+        case CEXIT: /* closed exit */
             game.exit_x = x, game.exit_y = y;
-            tilemap_set_tile(game.map, x, y, 1, TILE_EXIT);
+            tilemap_set_tile(game.map, x, y, 1, TILE_CLOSED_EXIT);
             // fallthrough
         case FLOOR: /* floor */
             tilemap_set_tile(game.map, x, y, 0, decode_floor(addr, width, height, x, y));
@@ -909,12 +944,13 @@ format_error:
         }
     }
 
-    for (x = 0; x < (int)width; x++) {
-        for (y = 0; y < (int)height; y++) {
-            // Decorate map
+    // Open exit if map has no key
+    if (!has_key) tilemap_set_tile(game.map, game.exit_x, game.exit_y, 1, TILE_EXIT);
+
+    // Decorate map
+    for (x = 0; x < (int)width; x++)
+        for (y = 0; y < (int)height; y++)
             tilemap_set_tile(game.map, x, y, 2, decode_decoration(addr, width, height, x, y));
-        }
-    }
 
     if (generated) free(addr);
     else munmap(addr, statbuf.st_size + 1);
@@ -1068,6 +1104,7 @@ static void init_tiles(void) {
     } types[] = {
         { TILE_VOID, VOID },
         { TILE_EXIT, EXIT },
+        { TILE_CLOSED_EXIT, CEXIT },
         { TILE_TRAP, TRAP | TILE_TYPE_RANDOM | (42 << 16) | (20 << 24) },
         { TILE_TRAP_0, ACTIVETRAP },
         { TILE_TRAP_1, ACTIVETRAP },
@@ -1088,10 +1125,15 @@ static void init_tiles(void) {
         { TILE_SIPOISON_0, SIPOISON },
         { TILE_SIPOISON_1, SIPOISON },
         { TILE_SIPOISON_2, SIPOISON },
+        { TILE_KEY, KEY1 },
+        { TILE_KEY_0, KEY1 },
+        { TILE_KEY_1, KEY1 },
+        { TILE_KEY_2, KEY1 },
         { TILE_POISON_STATIC, POISON },
         { TILE_IPOISON_STATIC, IPOISON },
         { TILE_SPOISON_STATIC, SPOISON },
         { TILE_SIPOISON_STATIC, SIPOISON },
+        { TILE_KEY_STATIC, KEY1 },
     };
 
     for (size_t i = 0; i < LEN(types); i++)

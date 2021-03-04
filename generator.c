@@ -477,12 +477,10 @@ finish_tunnels:
 
     // Decorate rooms
     for (ssize_t i = 0; i < state.rooms.size; i++) {
-        int r1 = rand();
-
         bool spawn = state.rooms.data + i == first;
-        bool has_walls = r1 % 2 == 0; r1 /= 2;
-        bool has_poisons = r1 % 3 == 0 || spawn; r1 /= 3;
-        bool has_traps = r1 % 3 != 0 && !spawn; r1 /= 3;
+        bool has_walls = !uniform(&state, 0, 3);
+        bool has_poisons = !uniform(&state, 0, 3) || spawn;
+        bool has_traps = uniform(&state, 0, 3) && !spawn;
         enum poison_pos pp = pp_none;
 
         // room width is set no negative value by tunnel making algorithm
@@ -495,21 +493,33 @@ finish_tunnels:
     }
 
 
-    // Spawn point and exit
+    // Spawn point, exit, key
     {
         int x, y;
         do {
             x = uniform(&state, first->x + 1, first->x + first->width - 2);
             y = uniform(&state, first->y + 1, first->x + first->height - 2);
-         } while (c_get(&state, x, y) != FLOOR);
-         c_set(&state, x, y, PLAYER);
+        } while (c_get(&state, x, y) != FLOOR);
+        c_set(&state, x, y, PLAYER);
+
+        bool has_key = uniform(&state, 0, 5);
 
         do {
             x = uniform(&state, prev->x + 1, prev->x + prev->width - 2);
             y = uniform(&state, prev->y + 1, prev->x + prev->height - 2);
-         } while (c_get(&state, x, y) != FLOOR &&
-                  c_get(&state, x, y) != TRAP);
-         c_set(&state, x, y, EXIT);
+        } while (c_get(&state, x, y) != FLOOR &&
+                 c_get(&state, x, y) != TRAP);
+        c_set(&state, x, y, has_key ? CEXIT : EXIT);
+
+        if (has_key) {
+            prev = &state.rooms.data[uniform(&state, 0, state.rooms.size - 1)];
+            do {
+                x = uniform(&state, prev->x, prev->x + prev->width - 1);
+                y = uniform(&state, prev->y, prev->x + prev->height - 1);
+            } while (c_get(&state, x, y) != FLOOR &&
+                     c_get(&state, x, y) != TRAP);
+            c_set(&state, x, y, KEY1);
+        }
     }
 
     // Randomly placed objects

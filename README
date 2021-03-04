@@ -26,6 +26,7 @@ Blending code requires SSE4.1
  * `ESC` -- exit game
  * `+`/`=` -- zoom-in
  * `-` -- zoom-out
+ * `SPACE` -- action (open door)
 
 There's 10 levels in the game
 If there's a file named data/map_N.txt
