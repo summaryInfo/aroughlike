@@ -51,7 +51,7 @@ static void subdivide(struct genstate *state, struct rect r) {
     push_rect(&state->rects, (struct rect) {r.x + r.width/2, r.y + r.height/2, r.width/2, r.height/2});
 }
 
-struct rect get_rand_subrect(struct genstate *state, struct rect rec) {
+static struct rect get_rand_subrect(struct genstate *state, struct rect rec) {
     int32_t oldw = rec.width, oldh = rec.height;
 
     if (oldw <= 2 || oldh <= 2) return rec;
@@ -131,7 +131,7 @@ static struct rect *find_closest_to(struct genstate *state, struct rect *r1) {
     return closest;
 }
 
-void draw_rect(struct genstate *state, struct rect room, char c) {
+static void draw_rect(struct genstate *state, struct rect room, char c) {
     for (ssize_t y = 0; y < room.height; y++) {
         for (ssize_t x = 0; x < room.width; x++) {
             c_set(state, x + room.x, y + room.y, c);
