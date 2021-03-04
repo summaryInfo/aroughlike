@@ -98,17 +98,6 @@
 #define PLAYER_VARIANT(x) (((x) / 4) & 7)
 #define PLAYER_DIRECTION(x) (((x)/64) & 1)
 
-#define WALL '#'
-#define TRAP 'T'
-#define ACTIVETRAP 't'
-#define PLAYER '@'
-#define EXIT 'x'
-#define POISON 'P'
-#define IPOISON 'I'
-#define SPOISON 'p'
-#define SIPOISON 'i'
-#define FLOOR '.'
-
 #define INV_COLOR 0xFF62ABD4
 #define INV_DUR (2*SEC)
 #define DMG_DUR (SEC)
@@ -167,11 +156,17 @@ struct gamestate {
 
     int level;
 
+    int32_t exit_x;
+    int32_t exit_y;
+
     /* Timer queue */
     struct timespec timers[timer_MAX];
 
     bool tick_early;
     bool want_redraw;
+
+    /* Random seed used by the game */
+    unsigned seed;
 
     /* FPS stats */
     bool last_redrawn;
@@ -289,7 +284,7 @@ bool redraw(struct timespec current, bool force) {
     return 1;
 }
 
-#define VISIBILITY_RADIUS 16
+#define VISIBILITY_RADIUS 20
 
 inline static int32_t dist2(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
     return  (x0 - x1)*(x0 - x1) + (y0 - y1)*(y0 - y1);
@@ -300,9 +295,46 @@ inline static char get_tiletype(int x, int y) {
     return (type == VOID) ? TILE_TYPE_CHAR(tilemap_get_tiletype(game.map, x, y, 0)) : type;
 }
 
+static void trace_ray(int32_t x0, int32_t y0, int32_t x1, int32_t y1) {
+    bool step = abs(y1 - y0) > abs(x1 - x0);
+    if (step) { SWAP(x0, y0); SWAP(x1, y1); }
+
+    if (x0 > x1) {
+        int32_t dx = abs(x1 - x0), dy = abs(y1 - y0);
+        int32_t er = dy;
+        int32_t ystep = (y0 < y1) - (y0 > y1);
+        for (int32_t y = y0, x = x0; x >= x1; x--) {
+            tilemap_visit(game.map, step ? y : x, step ? x: y);
+            if (get_tiletype(step ? y : x, step ? x : y) == WALL) break;
+            er += dy;
+            if (2 * er >= dx) {
+                y += ystep;
+                er -= dx;
+                tilemap_visit(game.map, step ? y : x, step ? x: y);
+                if (get_tiletype(step ? y : x, step ? x : y) == WALL) break;
+            }
+        }
+    } else {
+        int32_t dx = x1 - x0, dy = abs(y1 - y0);
+        int32_t er = dy, ystep = (y0 < y1) - (y0 > y1);
+        for (int32_t y = y0, x = x0; x <= x1; x++) {
+            tilemap_visit(game.map, step ? y : x, step ? x: y);
+            if (get_tiletype(step ? y : x, step ? x : y) == WALL) break;
+            er += dy;
+            if (2 * er >= dx) {
+                y += ystep;
+                er -= dx;
+                tilemap_visit(game.map, step ? y : x, step ? x: y);
+                if (get_tiletype(step ? y : x, step ? x : y) == WALL) break;
+            }
+        }
+    }
+}
+
 static void discover_1(int32_t x0, int32_t y0, int32_t x1, int32_t y1, bool prevwall) {
     tilemap_visit(game.map, x1, y1);
     game.tmp_grid[game.map->width*y1 + x1] = 1;
+
 
     if (dist2(x0, y0, x1, y1) >= VISIBILITY_RADIUS*VISIBILITY_RADIUS) return;
 
@@ -317,10 +349,41 @@ static void discover_1(int32_t x0, int32_t y0, int32_t x1, int32_t y1, bool prev
     }
 }
 
-inline static void discover(int32_t x, int32_t y) {
-    // Lets just use BFS insead of ray casting...
-    discover_1(x, y, x, y, 0);
-    memset(game.tmp_grid, 0, game.map->width*game.map->height);
+inline static void discover(int32_t x0, int32_t y0) {
+    if (1) {
+        // Lets just use BFS insead of ray casting...
+        discover_1(x0, y0, x0, y0, 0);
+        memset(game.tmp_grid, 0, game.map->width*game.map->height);
+    } else {
+        int32_t x = VISIBILITY_RADIUS, y = 0;
+
+        trace_ray(x0, y0, x0 + x, y0);
+        trace_ray(x0, y0, x0 - x, y0);
+        trace_ray(x0, y0, x0, y0 + x);
+        trace_ray(x0, y0, x0, y0 - x);
+
+        int32_t err = 1 - VISIBILITY_RADIUS;
+        while (x > y) {
+            y++;
+
+            if (err > 0) x--, err -= 2*x;
+            err = err + 2*y + 1;
+
+            if (x < y) break;
+
+            trace_ray(x0, y0, x + x0, y + y0);
+            trace_ray(x0, y0, -x + x0, y + y0);
+            trace_ray(x0, y0, x + x0, -y + y0);
+            trace_ray(x0, y0, -x + x0, -y + y0);
+
+            if (x != y) {
+                trace_ray(x0, y0, y + x0, x + y0);
+                trace_ray(x0, y0, -y + x0, x + y0);
+                trace_ray(x0, y0, y + x0, -x + y0);
+                trace_ray(x0, y0, -y + x0, -x + y0);
+            }
+        }
+    }
 }
 
 inline static void next_level(void) {
@@ -531,7 +594,7 @@ int64_t time_until_next_timer(struct timespec current) {
 int64_t tick(struct timespec current) {
     int64_t random_time = TIMEDIFF(current, game.timers[random_tick_timer]);
     if (random_time <= 10000LL) {
-        tilemap_random_tick(game.map);
+        tilemap_random_tick(game.map, &game.seed);
         game.timers[random_tick_timer] = current;
         TIMEINC(game.timers[random_tick_timer], SEC/TPS);
     }
@@ -543,7 +606,7 @@ int64_t tick(struct timespec current) {
             tilemap_animation_tick(game.screens[game.state]);
             game.want_redraw |= tilemap_refresh(game.screens[game.state]);
         }
-        game.player.tile = tileset_next_tile(game.tilesets[TILESET_ID(game.player.tile)], game.player.tile, 0);
+        game.player.tile = tileset_next_tile(game.tilesets[TILESET_ID(game.player.tile)], game.player.tile);
         game.timers[animation_timer] = current;
         TIMEINC(game.timers[animation_timer], SEC/UPS);
     }
@@ -569,6 +632,10 @@ int64_t tick(struct timespec current) {
     return time_until_next_timer(current);
 }
 
+inline static int32_t uniform(int32_t minn, int32_t maxn) {
+    return uniform_r(&game.seed, minn, maxn);
+}
+
 static void reset_game(void) {
     game.level = 0;
     game.player.lives = 1;
@@ -576,7 +643,7 @@ static void reset_game(void) {
     next_level();
 
     // Select random player model
-    int r = rand();
+    int r = uniform(0, 6);
     game.player.tile = TILE_PLAYER_LEFT_(r);
 }
 
@@ -653,29 +720,25 @@ static tile_t decode_wall(const char *m, ssize_t w, ssize_t h, int x, int y) {
     char top_right = get_cell(m, w, h, x + 1, y - 1);
     char top_left = get_cell(m, w, h, x - 1, y - 1);
 
-    // Unfortunately tileset I use does not
-    // contain all combinations of walls...
-    // But lets try to get the best approximation
+    int32_t uni4 = uniform(0, 3);
 
-    int r = rand();
-
-    if (bottom == FLOOR) return TILE_WALL_TOP_(r);
+    if (bottom == FLOOR) return TILE_WALL_TOP_(uni4);
     if (bottom_left == FLOOR && bottom_right == FLOOR) return TILE_WALL_LEFT_RIGHT;
 
     if (left == FLOOR && right != FLOOR) {
-        if (top == FLOOR) return TILE_WALL_BOTTOM_RIGHT_EX(r);
-        return TILE_WALL_LEFT_(r);
+        if (top == FLOOR) return TILE_WALL_BOTTOM_RIGHT_EX(uni4);
+        return TILE_WALL_LEFT_(uni4);
     } else if (right == FLOOR && left != FLOOR) {
-        if (top == FLOOR) return TILE_WALL_BOTTOM_LEFT_EX(r);
-        return TILE_WALL_RIGHT_(r);
+        if (top == FLOOR) return TILE_WALL_BOTTOM_LEFT_EX(uni4);
+        return TILE_WALL_RIGHT_(uni4);
     } else if (left == FLOOR && right == FLOOR) {
         return TILE_WALL_LEFT_RIGHT;
     }
 
     if (top == FLOOR) {
-        if (bottom_left == FLOOR) return TILE_WALL_BOTTOM_RIGHT_EX(r);
-        if (bottom_right == FLOOR) return TILE_WALL_BOTTOM_LEFT_EX(r);
-        return TILE_WALL_BOTTOM_(r);
+        if (bottom_left == FLOOR) return TILE_WALL_BOTTOM_RIGHT_EX(uni4);
+        if (bottom_right == FLOOR) return TILE_WALL_BOTTOM_LEFT_EX(uni4);
+        return TILE_WALL_BOTTOM_(uni4);
     }
 
     unsigned code = (top_left == FLOOR) | (top_right == FLOOR) << 1 |
@@ -683,11 +746,11 @@ static tile_t decode_wall(const char *m, ssize_t w, ssize_t h, int x, int y) {
     switch (code) {
     case 1: return TILE_WALL_BOTTOM_RIGHT;
     case 2: return TILE_WALL_BOTTOM_LEFT;
-    case 3: return TILE_WALL_BOTTOM_(r);
-    case 4: case 5: return TILE_WALL_LEFT_(r);
-    case 8: case 10: return TILE_WALL_RIGHT_(r);
-    case 7: case 9: case 13: return TILE_WALL_BOTTOM_LEFT_EX(r);
-    case 6: case 11: case 14:return TILE_WALL_BOTTOM_RIGHT_EX(r);
+    case 3: return TILE_WALL_BOTTOM_(uni4);
+    case 4: case 5: return TILE_WALL_LEFT_(uni4);
+    case 8: case 10: return TILE_WALL_RIGHT_(uni4);
+    case 7: case 9: case 13: return TILE_WALL_BOTTOM_LEFT_EX(uni4);
+    case 6: case 11: case 14:return TILE_WALL_BOTTOM_RIGHT_EX(uni4);
     }
 
     return TILE_WALL_LEFT_RIGHT;
@@ -698,20 +761,21 @@ static tile_t decode_floor(const char *m, ssize_t w, ssize_t h, int x, int y) {
     char right = get_cell(m, w, h, x + 1, y);
     char left = get_cell(m, w, h, x - 1, y);
     char top = get_cell(m, w, h, x, y - 1);
-    int r = rand();
+
+    int32_t uni12 = uniform(0, 11);
 
     if (top == WALL) {
         if (left == WALL && right != WALL) return TILE_FLOOR_TOP_LEFT;
         if (left != WALL && right == WALL) return TILE_FLOOR_TOP_RIGHT;
-        return TILE_FLOOR_TOP_(r);
+        return TILE_FLOOR_TOP_(uni12);
     } else  if (bottom == WALL) {
         if (left == WALL && right != WALL) return TILE_FLOOR_BOTTOM_LEFT;
         if (left != WALL && right == WALL) return TILE_FLOOR_BOTTOM_RIGHT;
-        return TILE_FLOOR_BOTTOM_(r);
+        return TILE_FLOOR_BOTTOM_(uni12);
     } else {
         if (left == WALL) return TILE_FLOOR_LEFT;
         if (right == WALL) return TILE_FLOOR_RIGHT;
-        return TILE_FLOOR_(r);
+        return TILE_FLOOR_(uni12);
     }
 }
 
@@ -719,27 +783,23 @@ static tile_t decode_decoration(const char *m, ssize_t w, ssize_t h, int x, int 
     char bottom = get_cell(m, w, h, x, y + 1);
     char left = get_cell(m, w, h, x - 1, y);
     char cur = get_cell(m, w, h, x, y);
-    int r = rand();
 
     if (bottom == FLOOR && cur == WALL) {
-        if (r % 10 == 3) return TILE_FLAG_TOP;
-        else if (r % 10 == 5) return TILE_TORCH_TOP;
+        int r = uniform(0, 9);
+        if (r < 1) return TILE_FLAG_TOP;
+        if (r < 2) return TILE_TORCH_TOP;
     }
     if (left == WALL && cur == FLOOR) {
-        if (r % 10 == 0) return TILE_TORCH_LEFT;
+        if (!uniform(0, 9)) return TILE_TORCH_LEFT;
     }
 
     if (cur == FLOOR && m[(w + 1)*y + x] == FLOOR) {
-        if (r % 20 == 3) {
-            switch((r/20) % 17) {
-            case 0:
-            case 1: return TILE_TORCH_1;
-            case 2:
-            case 3: return TILE_TORCH_2;
-            case 4: return TILE_BONES_1;
-            case 5: return TILE_BONES_2;
-            default:;
-            }
+        if (!uniform(0, 19)) {
+            int r = uniform(0, 16);
+            if (r < 2) return TILE_TORCH_1;
+            if (r < 4) return TILE_TORCH_2;
+            if (r < 5) return TILE_TORCH_2;
+            if (r < 6) return TILE_TORCH_2;
         }
     }
 
@@ -789,10 +849,12 @@ static void load_map(const char *file, bool generated) {
             nel = newnel;
         } while (nel);
     } else {
-        height = width = 32 + rand() % 64;
-        width += rand() % 64;
-        height += rand() % 64;
-        addr = generate_map(width, height);
+        height = width = uniform(32, 95);
+        width += uniform(0, 63);
+        height += uniform(0, 63);
+        struct timespec time;
+        clock_gettime(CLOCK_TYPE, &time);
+        addr = generate_map(width, height, time.tv_nsec);
     }
 
     if (!height) {
@@ -842,6 +904,7 @@ format_error:
             break;
         }
         case EXIT: /* exit */
+            game.exit_x = x, game.exit_y = y;
             tilemap_set_tile(game.map, x, y, 1, TILE_EXIT);
             // fallthrough
         case FLOOR: /* floor */
@@ -875,7 +938,7 @@ static struct tilemap *create_screen(size_t width, size_t height) {
     for (size_t y = 0; y < height; y++) {
         for (size_t x = 0; x < width; x++) {
             tile_t tile = NOTILE;
-            int r = rand();
+            int r = uniform(0, 11);
             if (y == 0) {
                 if (x == 0) tile = TILE_FLOOR_TOP_LEFT;
                 else if (x == width - 1) tile = TILE_FLOOR_TOP_RIGHT;
@@ -911,14 +974,10 @@ static struct tilemap *create_death_screen(void) {
     draw_message(map, 6, 2, "YOU DIED");
     draw_message(map, 0, 3, "Press DEL to restart");
     draw_message(map, 3, 4, "or ESC to exit");
-    for (size_t y = 0; y < map->height; y++) {
-        for (size_t x = 0; x < map->width; x++) {
-            int r = rand();
-            if (r/2 % 7 == 0) {
-                tilemap_set_tile(map, x, y, 1, r & 1 ? TILE_BONES_1 : TILE_BONES_2);
-            }
-        }
-    }
+    for (size_t y = 0; y < map->height; y++)
+        for (size_t x = 0; x < map->width; x++)
+            if (!uniform(0, 6)) tilemap_set_tile(map, x, y, 1,
+                    uniform(0, 1) ? TILE_BONES_1 : TILE_BONES_2);
     tilemap_refresh(map);
     return map;
 }
@@ -1078,16 +1137,18 @@ static void init_tiles(void) {
 }
 
 void init(void) {
+    clock_gettime(CLOCK_TYPE, &game.last_frame);
+    TIMEINC(game.last_frame, -(int64_t)game.avg_delta);
+
     game.state = s_greet;
     game.player.box.width = TILE_WIDTH;
     game.player.box.height = TILE_HEIGHT;
     game.avg_delta = SEC/FPS;
-    clock_gettime(CLOCK_TYPE, &game.last_frame);
-    srand(game.last_frame.tv_nsec);
-    TIMEINC(game.last_frame, -(int64_t)game.avg_delta);
+    game.seed = game.last_frame.tv_nsec;
 
     init_tiles();
     reset_game();
+
     game.screens[s_greet] = create_greet_screen();
     game.screens[s_game_over] = create_death_screen();
     game.screens[s_win] = create_win_screen();

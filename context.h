@@ -20,6 +20,18 @@
 #define WINDOW_CLASS "SoftRendererExa"
 #define WINDOW_TITLE "Rough-like with software rendering"
 
+#define WALL '#'
+#define TRAP 'T'
+#define ACTIVETRAP 't'
+#define PLAYER '@'
+#define EXIT 'x'
+#define POISON 'P'
+#define IPOISON 'I'
+#define SPOISON 'p'
+#define SIPOISON 'i'
+#define FLOOR '.'
+#define VOID ' '
+
 typedef uint32_t color_t;
 
 struct scale {
@@ -40,7 +52,7 @@ int64_t tick(struct timespec current);
 void handle_key(uint8_t kc, uint32_t state, bool pressed);
 
 /* Map generator.c */
-char *generate_map(int32_t width, int32_t height);
+char *generate_map(int32_t width, int32_t height, unsigned seed);
 
 /* Helpers from window.c */
 uint32_t get_keysym(uint8_t kc, uint32_t state);

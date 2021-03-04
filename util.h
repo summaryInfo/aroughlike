@@ -90,6 +90,11 @@ inline static bool intersect_with(struct rect *src, struct rect *dst) {
         }
 }
 
+inline static int32_t uniform_r(unsigned *seed, int32_t minn, int32_t maxn) {
+    /* Small helper to generate good random dirtibution */
+    return minn + (maxn-minn+1)*(int64_t)rand_r(seed)/RAND_MAX;
+}
+
 void warn(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 _Noreturn void die(const char *fmt, ...) __attribute__ ((format (printf, 1, 2)));
 

@@ -38,7 +38,7 @@ $(NAME): $(OBJ)
 window.o: image.h util.h context.h worker.h keys.h
 image.o: image.h util.h stb_image.h worker.h
 game.o: context.h util.h keys.h tilemap.h worker.h
-generator.o: util.h
+generator.o: util.h context.h
 tilemap.o: image.h tilemap.h util.h
 
 .PHONY: all clean force run
