@@ -144,25 +144,19 @@ static void draw_checkerboard(struct genstate *state, struct rect room, char c) 
 }
 
 static void draw_line(struct genstate *state, int32_t x0, int32_t y0, int32_t x1, int32_t y1, char c) {
-    if (x0 == x1) draw_vertical_line(state, y0, y1, x0, c);
-    if (y0 == y1) draw_horizontal_line(state, x0, x1, y0, c);
-    if (abs(x1 - x0) < abs(y1 - y0)) {
-        if (y0 > y1) { SWAP(y0, y1); SWAP(x0, x1); }
-        if (x0 > x1) {
-            for (int32_t y = y0; y <= y1; y++)
-                c_set(state, x0 - ((x0 - x1)*(y - y0)/(y1 - y0)), y, c);
-        } else {
-            for (int32_t y = y0; y <= y1; y++)
-                c_set(state, x0 + ((x1 - x0)*(y - y0)/(y1 - y0)), y, c);
-        }
-    } else {
-        if (x0 > x1) { SWAP(y0, y1); SWAP(x0, x1); }
-        if (y0 > y1) {
-            for (int32_t x = x0; x <= x1; x++)
-                c_set(state, x, y0 - ((y0 - y1)*(x - x0)/(x1 - x0)), c);
-        } else {
-            for (int32_t x = x0; x <= x1; x++)
-                c_set(state, x, y0 + (y1 - y0)*(x - x0)/(x1 - x0), c);
+    bool step = abs(y1 - y0) > abs(x1 - x0);
+    if (step) { SWAP(x0, y0); SWAP(x1, y1); }
+    if (x0 > x1) { SWAP(x0, x1); SWAP(y0, y1); }
+
+    int dx = x1 - x0, dy = abs(y1 - y0);
+    int er = 0, ystep = (y0 < y1) - (y0 > y1);
+    for (int y = y0, x = x0; x <= x1; x++) {
+        if (step) c_set(state, y, x, c);
+        else c_set(state, x, y, c);
+        er += dy;
+        if (2 * er >= dx) {
+            y += ystep;
+            er -= dx;
         }
     }
 }
