@@ -1182,7 +1182,6 @@ void init(void) {
     clock_gettime(CLOCK_TYPE, &game.last_frame);
     TIMEINC(game.last_frame, -(int64_t)game.avg_delta);
 
-    game.state = s_greet;
     game.player.box.width = TILE_WIDTH;
     game.player.box.height = TILE_HEIGHT;
     game.avg_delta = SEC/FPS;
@@ -1191,6 +1190,7 @@ void init(void) {
     init_tiles();
     reset_game();
 
+    game.state = s_greet;
     game.screens[s_greet] = create_greet_screen();
     game.screens[s_game_over] = create_death_screen();
     game.screens[s_win] = create_win_screen();
