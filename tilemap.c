@@ -115,7 +115,7 @@ struct tilemap *create_tilemap(size_t width, size_t height, int32_t tile_width, 
     size_t dirty_size = ((width + 31) >> 5)*height*sizeof(uint32_t);
     size_t ticked_size = width * height * sizeof(uint32_t);
     size_t tiles_size = (width*height*TILEMAP_LAYERS*sizeof(tile_t) + 3) & ~3;
-    struct tilemap *map = malloc(sizeof(*map) + 2*dirty_size + tiles_size + ticked_size);
+    struct tilemap *map = calloc(1, sizeof(*map) + 2*dirty_size + tiles_size + ticked_size);
     assert(map);
 
     map->dirty = (uint32_t *)((uint8_t *)map->tiles + tiles_size);
