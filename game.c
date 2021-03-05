@@ -717,7 +717,7 @@ void handle_key(uint8_t kc, uint32_t st, bool pressed) {
     case k_space:
         if (dist2((game.player.box.x + game.player.box.width/2)/game.map->tile_width,
                   (game.player.box.y + game.player.box.height/2)/game.map->tile_height,
-                game.exit_x, game.exit_y) < HANDS_LENGTH*HANDS_LENGTH) {
+                game.exit_x, game.exit_y) < HANDS_LENGTH*HANDS_LENGTH && game.player.has_key) {
             tilemap_set_tile(game.map, game.exit_x, game.exit_y, 1, TILE_EXIT);
             game.player.has_key = 0;
             game.want_redraw = 1;
