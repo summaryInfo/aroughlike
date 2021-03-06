@@ -823,8 +823,8 @@ static tile_t decode_decoration(const char *m, ssize_t w, ssize_t h, int x, int 
             int r = uniform(0, 16);
             if (r < 2) return TILE_TORCH_1;
             if (r < 4) return TILE_TORCH_2;
-            if (r < 5) return TILE_TORCH_2;
-            if (r < 6) return TILE_TORCH_2;
+            if (r < 5) return TILE_BONES_1;
+            if (r < 6) return TILE_BONES_2;
         }
     }
 
