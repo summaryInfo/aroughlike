@@ -6,7 +6,7 @@ rough-like game with software rendering.
 
 ## Installing dependencies
 
-I tried to minimized dependencies, so the only required libs are xcb-shm and xcb.
+ Number of dependencies is minimized, so the only required libs are xcb-shm and xcb.
 They can be installed:
 
  * On Debian derivatives (e.g. Debian/Ubuntu/Mint): `apt update && apt install libx11-xcb-dev libxcb-shm0-dev`
@@ -27,8 +27,6 @@ To compile a program you just need to
     make -j$(nproc)
 
 ## Gameplay
-
-Video demonstration is in [video.mp4](video.mp4)
 
  * `w` -- move forward
  * `a` -- move left
@@ -80,3 +78,8 @@ Not mentioned in task:
 * Procedural map generation
 * Multi-threaded/SIMD renderer
 * 7 random characters
+
+# Resources
+
+* Tileset used was downloaded [here](https://pixel-poem.itch.io/dungeon-assetpuck) (and modified to suite the game needs)
+* ASCII tiles are from [here](http://97.107.128.126/smf/index.php?topic=172536.0)

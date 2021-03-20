@@ -1,3 +1,4 @@
+/* Copyright (c) 2021, Evgeny Baskov. All rights reserved */
 
 #include "image.h"
 #include "tilemap.h"

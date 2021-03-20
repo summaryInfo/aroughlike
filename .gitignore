@@ -1,0 +1,12 @@
+# Hidden files (for autocomplion)
+.*
+
+# Objects
+*.o
+
+# All kinds of analyzers files
+*.gcda
+perf.data*
+
+# Binaries (with default names)
+game
